@@ -1,0 +1,30 @@
+# Render.com 一键部署配置（免费版即可获得公网域名）
+# 部署后访问：https://<你的服务名>.onrender.com/
+# 重要：在 Render 后台的 Environment 里设置 BD2_ADMIN_TOKEN 为你自己的强口令！
+services:
+  - type: web
+    name: bd2-redeem
+    runtime: python
+    plan: free
+    buildCommand: "pip install -r backend/requirements.txt"
+    startCommand: "python backend/run.py"
+    # 想让玩家绑定数据/兑换记录在重启、重新部署后不丢，就取消下面 disks 注释并
+    # 把上方 BD2_DB_PATH 改成 /data/bd2.db（挂载的持久磁盘）。不加也能跑，但数据存在
+    # 临时文件系统，重新部署后会清空（礼包码会自动重新抓取，玩家需重新绑定）。
+    # disks:
+    #   - name: bd2data
+    #     mountPath: /data
+    #     sizeGB: 1
+    envVars:
+      - key: BD2_HOST
+        value: "0.0.0.0"
+      - key: BD2_PORT
+        value: "8000"
+      - key: BD2_ADMIN_TOKEN
+        sync: false   # 在 Render 控制台手动填写
+      - key: BD2_FETCH_ENABLED
+        value: "1"
+      - key: BD2_FETCH_INTERVAL_MIN
+        value: "30"
+      - key: BD2_DB_PATH
+        value: "data/bd2.db"

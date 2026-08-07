@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BD2 兑换系统 · 管理后台</title>
+<style>
+  :root{--bg:#f5f6f8;--card:#fff;--line:#e6e8eb;--txt:#1f2328;--sub:#6b7280;
+        --accent:#8b5a2b;--ok:#1a7f37;--err:#cf222e;--pending:#9a6700;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+       font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+  .wrap{max-width:1000px;margin:0 auto;padding:24px 18px 60px}
+  h1{font-size:20px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;margin-top:16px}
+  .card h2{margin:0 0 12px;font-size:15px}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .row>div{flex:1;min-width:160px}
+  label{display:block;font-size:12px;color:var(--sub);margin:8px 0 5px}
+  input{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:14px;outline:none}
+  input:focus{border-color:var(--accent)}
+  button{margin-top:12px;padding:10px 18px;border:0;border-radius:8px;cursor:pointer;
+         background:var(--accent);color:#fff;font-size:14px;font-weight:600}
+  button.ghost{background:#eef0f2;color:var(--txt)}
+  .msg{margin-top:10px;padding:9px 12px;border-radius:8px;font-size:13px;display:none}
+  .msg.ok{background:#e9f7ee;color:var(--ok);display:block}
+  .msg.err{background:#fdeceb;color:var(--err);display:block}
+  .stats{display:flex;gap:14px;flex-wrap:wrap}
+  .stat{background:#faf7f2;border:1px solid #eadfce;border-radius:10px;padding:12px 16px;min-width:110px}
+  .stat .n{font-size:22px;font-weight:700;color:var(--accent)}
+  .stat .l{font-size:12px;color:var(--sub)}
+  table{width:100%;border-collapse:collapse;margin-top:6px;font-size:13px}
+  th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line)}
+  th{color:var(--sub)}
+  .st{font-weight:600}
+  .st.success,.st.already{color:var(--ok)} .st.pending{color:var(--pending)}
+  .st.failed,.st.invalid,.st.expired,.st.bad_user,.st.error,.st.exceeded{color:var(--err)}
+  .tokenbar{display:flex;gap:10px;align-items:flex-end}
+  .tokenbar>div{flex:1}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🛠 BD2 礼包码自动兑换 · 管理后台</h1>
+
+  <div class="card">
+    <div class="tokenbar">
+      <div>
+        <label>管理员令牌（X-Admin-Token，默认 change-me-admin-token，请在 config.py 修改）</label>
+        <input id="token" placeholder="输入管理员令牌" value="change-me-admin-token" />
+      </div>
+      <button onclick="refreshAll()">连接 / 刷新</button>
+    </div>
+    <div id="tokenMsg" class="msg"></div>
+  </div>
+
+  <div class="card">
+    <h2>➕ 录入新礼包码（保存后自动为所有已绑定玩家兑换）</h2>
+    <div class="row">
+      <div><label>礼包码</label><input id="code" maxlength="20" placeholder="例如 BD2025SUMMER" /></div>
+      <div><label>说明（可选）</label><input id="cdesc" maxlength="128" placeholder="例如 5星招募券1张" /></div>
+      <div><label>过期时间（可选，ISO）</label><input id="cexp" placeholder="2026-12-31T23:59" /></div>
+    </div>
+    <button onclick="addCode()">录入并触发自动兑换</button>
+    <div id="codeMsg" class="msg"></div>
+  </div>
+
+  <div class="card">
+    <h2>🌐 社区兑换码自动抓取</h2>
+    <p style="font-size:13px;color:var(--sub);margin:0 0 10px">
+      系统每 <b id="fetchInterval">30</b> 分钟自动从社区源抓取最新礼包码并入库（入库即自动兑换）。
+      也可点击下方按钮立即执行一次。
+    </p>
+    <button onclick="runFetch()">立即抓取社区兑换码</button>
+    <button class="ghost" onclick="loadSources()">查看抓取源</button>
+    <div id="fetchMsg" class="msg"></div>
+    <div id="sources" style="margin-top:10px;font-size:12px;color:var(--sub)"></div>
+  </div>
+
+  <div class="card">
+    <h2>📊 实时统计</h2>
+    <div id="stats" class="stats"><span style="color:var(--sub)">请先连接</span></div>
+  </div>
+
+  <div class="card">
+    <h2>📜 最近兑换记录</h2>
+    <button class="ghost" onclick="loadRedemptions()">刷新记录</button>
+    <div id="redemptions"></div>
+  </div>
+</div>
+
+<script>
+const ST_TEXT={success:"成功",already:"已兑换过",pending:"排队中",failed:"失败",
+  invalid:"码无效",expired:"已过期",exceeded:"超上限",unavailable:"不可用",bad_user:"昵称错误",error:"失败"};
+function token(){return document.getElementById('token').value.trim();}
+function H(){return {'Content-Type':'application/json','X-Admin-Token':token()};}
+
+async function addCode(){
+  const code=document.getElementById('code').value.trim();
+  const description=document.getElementById('cdesc').value.trim();
+  const expires_at=document.getElementById('cexp').value.trim()||null;
+  const msg=document.getElementById('codeMsg');msg.className='msg';
+  if(!code){msg.className='msg err';msg.textContent='请填写礼包码';return;}
+  try{
+    const r=await fetch('/admin/codes',{method:'POST',headers:H(),
+      body:JSON.stringify({code,description,expires_at})});
+    const d=await r.json();
+    if(r.ok){msg.className='msg ok';
+      msg.textContent=`✅ 已录入「${code}」，为 ${d.queued_players} 位玩家排入兑换队列，后台自动执行中。`;
+      document.getElementById('code').value='';document.getElementById('cdesc').value='';
+      setTimeout(refreshAll,800);}
+    else{msg.className='msg err';msg.textContent='失败：'+(d.detail||JSON.stringify(d));}
+  }catch(e){msg.className='msg err';msg.textContent='网络错误：'+e;}
+}
+
+async function loadStats(){
+  const box=document.getElementById('stats');
+  try{
+    const r=await fetch('/admin/stats',{headers:H()});
+    if(r.status===401){box.innerHTML='<span style="color:var(--err)">令牌无效</span>';return false;}
+    const d=await r.json();const by=d.redemptions_by_status||{};
+    let cells=`<div class="stat"><div class="n">${d.players}</div><div class="l">已绑定玩家</div></div>
+      <div class="stat"><div class="n">${d.codes}</div><div class="l">生效礼包码</div></div>`;
+    for(const k of ['pending','success','already','failed','invalid','expired','bad_user']){
+      if(by[k])cells+=`<div class="stat"><div class="n">${by[k]}</div><div class="l">${ST_TEXT[k]||k}</div></div>`;
+    }
+    box.innerHTML=cells;return true;
+  }catch(e){box.innerHTML='<span style="color:var(--err)">加载失败：'+e+'</span>';return false;}
+}
+
+async function loadRedemptions(){
+  const box=document.getElementById('redemptions');
+  try{
+    const r=await fetch('/admin/redemptions?limit=200',{headers:H()});
+    if(r.status===401){box.innerHTML='<p style="color:var(--err)">令牌无效</p>';return;}
+    const d=await r.json();
+    if(!d.records.length){box.innerHTML='<p style="color:var(--sub);font-size:13px">暂无记录</p>';return;}
+    let h='<table><tr><th>昵称</th><th>礼包码</th><th>状态</th><th>尝试</th><th>说明</th><th>更新时间</th></tr>';
+    for(const x of d.records){
+      h+=`<tr><td>${x.nickname}</td><td style="font-family:monospace">${x.code}</td>
+        <td class="st ${x.status}">${ST_TEXT[x.status]||x.status}</td>
+        <td>${x.attempts}</td><td style="color:var(--sub)">${x.message||''}</td>
+        <td style="color:var(--sub)">${(x.updated_at||'').replace('T',' ').slice(0,19)}</td></tr>`;
+    }
+    box.innerHTML=h+'</table>';
+  }catch(e){box.innerHTML='<p style="color:var(--err)">加载失败：'+e+'</p>';}
+}
+
+async function refreshAll(){
+  const msg=document.getElementById('tokenMsg');msg.className='msg';
+  const ok=await loadStats();
+  if(ok){msg.className='msg ok';msg.textContent='✅ 已连接';loadRedemptions();loadSources();}
+  else{msg.className='msg err';msg.textContent='连接失败，请检查令牌';}
+}
+
+async function runFetch(){
+  const msg=document.getElementById('fetchMsg');msg.className='msg';
+  msg.className='msg';msg.textContent='抓取中（可能需要访问社区站点）…';
+  try{
+    const r=await fetch('/admin/fetch',{method:'POST',headers:H()});
+    const d=await r.json();
+    if(r.ok){
+      const per=Object.entries(d.sources||{}).map(([k,v])=>`${k}: ${v}`).join('，');
+      msg.className='msg ok';
+      msg.textContent=`✅ 抓取完成：候选 ${d.total_candidates} 个，新入库并触发兑换 ${d.new_codes_enqueued} 个。各源(${per})`;
+    } else {msg.className='msg err';msg.textContent='失败：'+(d.detail||JSON.stringify(d));}
+  }catch(e){msg.className='msg err';msg.textContent='网络错误：'+e;}
+}
+
+async function loadSources(){
+  try{
+    const r=await fetch('/admin/sources',{headers:H()});
+    const d=await r.json();
+    const box=document.getElementById('sources');
+    document.getElementById('fetchInterval').textContent=d.fetch_interval_min;
+    box.innerHTML='抓取开关：<b>'+(d.fetch_enabled?'开':'关')+'</b><br>抓取源：<br>'+
+      (d.sources||[]).map(s=>'· '+s).join('<br>');
+  }catch(e){/* 忽略 */}
+}
+</script>
+</body>
+</html>

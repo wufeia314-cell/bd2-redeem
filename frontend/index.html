@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#7a4a24" />
+<title>棕色尘埃2 · 礼包码自动兑换</title>
+<style>
+  :root{
+    --bg:#f4f1ec;--card:#fff;--line:#ece6dd;--txt:#2b2620;--sub:#8a8077;
+    --accent:#8b5a2b;--accent-d:#6f4621;--accent-l:#c9873f;
+    --ok:#1a7f37;--err:#cf222e;--pending:#9a6700;--chip:#f3ede4;--chip-l:#e4d4bf;
+    --shadow:0 4px 18px rgba(123,79,36,.12);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg);color:var(--txt);line-height:1.55;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{max-width:480px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;
+       padding:0 0 calc(76px + env(safe-area-inset-bottom));position:relative}
+
+  /* ===== 顶部 hero ===== */
+  .hero{background:linear-gradient(150deg,#6f4621 0%,#8b5a2b 45%,#c9873f 100%);
+        color:#fff;padding:calc(28px + env(safe-area-inset-top)) 20px 30px;position:relative;overflow:hidden}
+  .hero::after{content:"";position:absolute;right:-40px;top:-40px;width:160px;height:160px;
+        background:radial-gradient(circle,rgba(255,255,255,.18),transparent 70%);border-radius:50%}
+  .hero .badge{display:inline-block;font-size:11px;letter-spacing:.5px;background:rgba(255,255,255,.18);
+        padding:3px 10px;border-radius:20px;margin-bottom:10px}
+  .hero h1{margin:0;font-size:21px;font-weight:700;letter-spacing:.5px}
+  .hero p{margin:8px 0 0;font-size:13px;opacity:.9;line-height:1.6}
+
+  /* ===== 分段 tab ===== */
+  .tabs{position:sticky;top:0;z-index:20;display:flex;background:#fff;border-bottom:1px solid var(--line);
+        box-shadow:0 2px 8px rgba(0,0,0,.04)}
+  .tab{flex:1;text-align:center;padding:13px 0;font-size:14px;color:var(--sub);font-weight:600;
+        position:relative;cursor:pointer;transition:color .2s}
+  .tab.active{color:var(--accent)}
+  .tab.active::after{content:"";position:absolute;left:50%;bottom:0;transform:translateX(-50%);
+        width:34px;height:3px;border-radius:3px;background:var(--accent-l)}
+
+  /* ===== 面板 ===== */
+  .panels{flex:1;padding:18px 16px 0}
+  .panel{display:none;animation:fade .3s ease}
+  .panel.active{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;
+        box-shadow:var(--shadow);margin-bottom:16px}
+  .card h2{margin:0 0 2px;font-size:15px;display:flex;align-items:center;gap:6px}
+  .card .desc{color:var(--sub);font-size:12.5px;margin:0 0 14px;line-height:1.6}
+
+  label{display:block;font-size:12.5px;color:var(--sub);margin:12px 0 6px}
+  input{width:100%;padding:13px 14px;border:1.5px solid var(--line);border-radius:12px;
+        font-size:16px;background:#fcfaf7;outline:none;transition:.15s;-webkit-appearance:none}
+  input:focus{border-color:var(--accent-l);background:#fff;box-shadow:0 0 0 4px rgba(201,135,63,.12)}
+
+  button{margin-top:16px;width:100%;padding:15px;border:0;border-radius:12px;cursor:pointer;
+        background:linear-gradient(135deg,#8b5a2b,#a86a30);color:#fff;font-size:16px;font-weight:700;
+        box-shadow:0 4px 12px rgba(139,90,43,.3);transition:transform .1s,opacity .2s}
+  button:active{transform:scale(.98)}
+  button:disabled{opacity:.55;box-shadow:none}
+  button.ghost{background:#fff;color:var(--accent);border:1.5px solid var(--chip-l);box-shadow:none;font-weight:600}
+
+  .msg{margin-top:14px;padding:12px 14px;border-radius:12px;font-size:13.5px;display:none;line-height:1.55}
+  .msg.ok{background:#e9f7ee;color:var(--ok);display:block}
+  .msg.err{background:#fdeceb;color:var(--err);display:block}
+  .msg.info{background:#eef3fb;color:#1f5fbf;display:block}
+
+  /* 已绑定状态卡 */
+  .me{display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,#fff7ee,#fbeede);
+        border:1px solid var(--chip-l);border-radius:14px;padding:14px;margin-bottom:14px}
+  .me .ava{width:44px;height:44px;border-radius:50%;flex:0 0 44px;display:flex;align-items:center;
+        justify-content:center;background:var(--accent);color:#fff;font-size:20px;font-weight:700}
+  .me .who{font-size:15px;font-weight:700;word-break:break-all}
+  .me .st-txt{font-size:12px;color:var(--sub);margin-top:2px}
+
+  /* 礼包码 chips */
+  .codes{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{background:var(--chip);border:1px solid var(--chip-l);color:#8b5a2b;padding:7px 12px;
+        border-radius:22px;font-size:13px;font-family:ui-monospace,Menlo,monospace;display:flex;align-items:center;gap:5px}
+  .chip .src{font-size:11px}
+  .empty{color:var(--sub);font-size:13px;padding:6px 0}
+
+  /* 记录列表 */
+  .rec{display:flex;align-items:center;justify-content:space-between;padding:13px 4px;
+        border-bottom:1px solid var(--line);gap:10px}
+  .rec:last-child{border-bottom:0}
+  .rec .code{font-family:ui-monospace,Menlo,monospace;font-size:14px;font-weight:600}
+  .rec .sub{font-size:11.5px;color:var(--sub);margin-top:2px}
+  .tag{font-size:12px;font-weight:700;padding:4px 10px;border-radius:20px;white-space:nowrap}
+  .tag.success,.tag.already{background:#e9f7ee;color:var(--ok)}
+  .tag.pending{background:#fff4e0;color:var(--pending)}
+  .tag.failed,.tag.invalid,.tag.expired,.tag.bad_user{background:#fdeceb;color:var(--err)}
+
+  .foot{color:var(--sub);font-size:11.5px;text-align:center;padding:20px 18px calc(20px + env(safe-area-inset-bottom));line-height:1.7}
+
+  /* 浮动提示 */
+  .toast{position:fixed;left:50%;top:18%;transform:translateX(-50%) translateY(-12px);
+        background:rgba(43,38,32,.92);color:#fff;padding:11px 18px;border-radius:24px;font-size:13.5px;
+        z-index:50;opacity:0;transition:.25s;pointer-events:none;max-width:86%;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="hero">
+    <span class="badge">BD2 · 自动兑换</span>
+    <h1>🎁 礼包码自动兑换</h1>
+    <p>绑定一次游戏昵称，之后每次更新礼包码系统都会自动帮你兑换，奖励直接进游戏邮箱。</p>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="bind" onclick="switchTab('bind')">绑定</div>
+    <div class="tab" data-tab="codes" onclick="switchTab('codes')">礼包码</div>
+    <div class="tab" data-tab="mine" onclick="switchTab('mine')">我的记录</div>
+  </div>
+
+  <div class="panels">
+    <!-- 绑定面板 -->
+    <div class="panel active" id="panel-bind">
+      <div class="card">
+        <h2>① 绑定游戏昵称</h2>
+        <p class="desc">请填写与游戏内<strong>完全一致</strong>的昵称（区分大小写与符号）。绑定后会自动补发所有历史有效码并持续自动兑换。</p>
+        <label>游戏昵称</label>
+        <input id="nickname" maxlength="24" placeholder="例如：StoreManager007" autocomplete="off" />
+        <label>备注（可选，如区服）</label>
+        <input id="note" maxlength="64" placeholder="例如：官服 / 亚洲服" autocomplete="off" />
+        <button id="bindBtn" onclick="bind()">绑定并开启自动兑换</button>
+        <div id="bindMsg" class="msg"></div>
+      </div>
+    </div>
+
+    <!-- 礼包码面板 -->
+    <div class="panel" id="panel-codes">
+      <div class="card">
+        <h2>② 当前生效的礼包码</h2>
+        <p class="desc">系统已收录、正在自动为已绑定玩家兑换的码。🌐 来自社区自动抓取，✍️ 来自管理员手动录入。</p>
+        <div id="codes" class="codes"><span class="empty">加载中…</span></div>
+      </div>
+    </div>
+
+    <!-- 我的记录面板 -->
+    <div class="panel" id="panel-mine">
+      <div class="card">
+        <h2>③ 我的兑换记录</h2>
+        <p class="desc">输入已绑定的昵称查询兑换进度，或绑定后自动展示。</p>
+        <div id="meBox"></div>
+        <label>查询昵称</label>
+        <input id="queryNick" maxlength="24" placeholder="你绑定的昵称" autocomplete="off" />
+        <button class="ghost" onclick="queryStatus()">查询记录</button>
+        <div id="statusBox"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    仅调用官方公开兑换接口（redeem.bd2.pmang.cloud），奖励发放至游戏邮箱。<br/>
+    本工具与 NEOWIZ 无隶属关系，请遵守游戏服务条款，理性使用。
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const ST_TEXT = {success:"已兑换",already:"已兑换",pending:"排队中",failed:"失败",
+  invalid:"码无效",expired:"已过期",exceeded:"超上限",unavailable:"不可用",
+  bad_user:"昵称错误",error:"失败"};
+
+function toast(msg){
+  const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
+  clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);
+}
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id==='panel-'+name));
+  if(name==='codes') loadCodes();
+  if(name==='mine' && document.getElementById('meBox').dataset.nick) queryStatus();
+}
+
+// 健壮请求：先读文本再解析，带超时，出错暴露真实 HTTP 状态码 + 原始片段（排查代理/部署链路）
+async function requestJson(url, method, body){
+  const ctrl=new AbortController();
+  const timer=setTimeout(()=>ctrl.abort(),20000);
+  try{
+    const opt={method,headers:{'Accept':'application/json'},signal:ctrl.signal};
+    if(body!==undefined){opt.headers['Content-Type']='application/json';opt.body=JSON.stringify(body);}
+    const r=await fetch(url,opt);
+    const text=await r.text();
+    if(!text) throw new Error(`服务器返回空响应（HTTP ${r.status}）。多为部署/代理在 POST 时掐断响应，请把状态码告知开发者。`);
+    let data;
+    try{data=JSON.parse(text);}catch(e){throw new Error(`响应非合法 JSON（HTTP ${r.status}）：\n${text.slice(0,300)}`);}
+    return {status:r.status,ok:r.ok,data};
+  }finally{clearTimeout(timer);}
+}
+
+function showMe(nick){
+  document.getElementById('meBox').dataset.nick=nick;
+  document.getElementById('meBox').innerHTML=
+    `<div class="me"><div class="ava">${nick.slice(0,1).toUpperCase()}</div>
+     <div><div class="who">${nick}</div><div class="st-txt">✅ 已绑定 · 新礼包码将自动兑换</div></div></div>`;
+}
+
+async function bind(){
+  const nickname=document.getElementById('nickname').value.trim();
+  const note=document.getElementById('note').value.trim();
+  const msg=document.getElementById('bindMsg'),btn=document.getElementById('bindBtn');
+  msg.className='msg';
+  if(!nickname){toast('请填写游戏昵称');msg.className='msg err';msg.textContent='请填写游戏昵称';return;}
+  btn.disabled=true;btn.textContent='绑定中…';
+  try{
+    const {ok,data}=await requestJson('/api/bind','POST',{nickname,note});
+    if(ok){
+      msg.className='msg ok';
+      msg.textContent=`✅ 绑定成功！已为「${nickname}」排入 ${data.queued_history_codes??0} 个历史礼包码，正在后台自动兑换。`;
+      showMe(nickname);
+      toast('绑定成功，已开启自动兑换');
+      switchTab('mine');
+      queryStatus();
+    }else{msg.className='msg err';msg.textContent='绑定失败：'+(data.detail||JSON.stringify(data));}
+  }catch(e){msg.className='msg err';msg.textContent='绑定出错：'+e.message;toast('绑定出错，详见提示');}
+  btn.disabled=false;btn.textContent='绑定并开启自动兑换';
+}
+
+async function loadCodes(){
+  const box=document.getElementById('codes');
+  try{
+    const {ok,data}=await requestJson('/api/codes','GET');
+    if(!ok){box.innerHTML='<span class="empty">加载失败</span>';return;}
+    if(!data.codes.length){box.innerHTML='<span class="empty">暂无生效礼包码</span>';return;}
+    box.innerHTML=data.codes.map(c=>{
+      const src=c.source&&c.source.startsWith('auto')?'🌐':'✍️';
+      return `<span class="chip" title="${(c.description||'')+(c.source?' （来源：'+c.source+'）':'')}">
+                <span class="src">${src}</span>${c.code}</span>`;
+    }).join('');
+  }catch(e){box.innerHTML='<span class="empty">加载失败：'+e.message+'</span>';}
+}
+
+async function queryStatus(){
+  const nick=(document.getElementById('queryNick').value.trim()
+            || document.getElementById('meBox').dataset.nick || '');
+  const box=document.getElementById('statusBox');
+  if(!nick){box.innerHTML='';toast('请先输入或绑定昵称');return;}
+  document.getElementById('queryNick').value=nick;
+  if(!document.getElementById('meBox').dataset.nick) showMe(nick);
+  box.innerHTML='<p class="empty">查询中…</p>';
+  try{
+    const {ok,data}=await requestJson('/api/status/'+encodeURIComponent(nick),'GET');
+    if(!ok){box.innerHTML='<p class="empty">查询失败</p>';return;}
+    if(!data.records.length){box.innerHTML='<p class="empty">没有该昵称的兑换记录，请先绑定。</p>';return;}
+    let h='';
+    const order={success:0,already:0,pending:1,failed:2,invalid:2,expired:2,bad_user:2,error:2};
+    data.records.sort((a,b)=>(order[a.status]??9)-(order[b.status]??9));
+    for(const x of data.records){
+      const st=ST_TEXT[x.status]||x.status;
+      h+=`<div class="rec"><div><div class="code">${x.code}</div>
+          <div class="sub">${x.message||''}</div></div>
+          <span class="tag ${x.status}">${st}</span></div>`;
+    }
+    const succ=data.records.filter(r=>r.status==='success'||r.status==='already').length;
+    box.innerHTML=`<p class="desc" style="margin:4px 0 8px">共 ${data.records.length} 条 · 成功 ${succ} 条</p>`+h;
+  }catch(e){box.innerHTML='<p class="empty">查询失败：'+e.message+'</p>';}
+}
+
+// 进入时检查连通性并预载礼包码
+(async function init(){
+  try{ await requestJson('/api/health','GET'); }catch(e){ /* 静默，不影响页面 */ }
+  loadCodes();
+})();
+</script>
+</body>
+</html>

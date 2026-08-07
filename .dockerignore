@@ -1,0 +1,11 @@
+backend/__pycache__/
+backend/*.pyc
+backend/_test_*.html
+data/*.db
+data/*.db-wal
+data/*.db-shm
+.git/
+.gitignore
+.env
+__pycache__/
+*.md
