@@ -31,6 +31,11 @@
         padding:3px 10px;border-radius:20px;margin-bottom:10px}
   .hero h1{margin:0;font-size:21px;font-weight:700;letter-spacing:.5px}
   .hero p{margin:8px 0 0;font-size:13px;opacity:.9;line-height:1.6}
+  .hero-note{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:11px;
+        font-size:12px;opacity:.96;line-height:1.5}
+  .hero-note .k{display:inline-block;background:rgba(255,255,255,.22);padding:2px 9px;
+        border-radius:9px;font-weight:700;white-space:nowrap}
+  .hero-note .v{opacity:.95}
 
   /* ===== 绑定条（参考图样式） ===== */
   .bindbar{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px 12px 12px 16px;
@@ -131,6 +136,7 @@
     <span class="badge">BD2 · 自动兑换</span>
     <h1>🎁 礼包码自动兑换</h1>
     <p>输入游戏 UID 绑定一次，后续新礼包码自动帮你兑换，奖励直达游戏邮箱。</p>
+    <div class="hero-note"><span class="k">绑定有效期</span><span class="v">7 天 · 到期自动停止为你兑换新码 · 可重新绑定续期</span></div>
   </div>
 
   <!-- 参考图样式的 UID 绑定条 -->
