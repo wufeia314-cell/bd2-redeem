@@ -276,6 +276,21 @@ function daysLeft(iso){
   return `${diff}天后过期`;
 }
 
+// 是否含中文字符（用于区分 GameKee 中文源 与 英文抓取源）
+function _hasCJK(s){
+  return !!s && /[　-〿一-鿿＀-￯]/.test(s);
+}
+// 是否为「待官方验证且非中文」的码（这类应沉到列表最底部）。
+// 置顶条件（满足任一即不算沉底）：来自 GameKee 中文权威源 / 奖励含中文 / 已被官方实测验证过。
+function _isBottomCode(c){
+  const off=c.official_status||'pending';
+  const pending=(off==='pending'||off===''||off==null);
+  const trusted=(c.source==='auto:gamekee')
+              || _hasCJK(c.reward_name) || _hasCJK(c.description)
+              || !pending;
+  return !trusted;
+}
+
 const ICONS={
   gift:'<svg viewBox="0 0 24 24"><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7"/><rect x="2" y="7" width="20" height="5" rx="1"/><path d="M12 7a3 3 0 0 1 3-3c1.3 0 2.4.8 2.8 2M12 7a3 3 0 0 0-3-3 3.4 3.4 0 0 0-2.8 2M12 7v13"/></svg>',
   ticket:'<svg viewBox="0 0 24 24"><path d="M3 9v6a1 1 0 0 0 1 1h1.5a.5.5 0 0 1 .5.5v3a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 1 .5-.5H20a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1h-2V4a1 1 0 0 0-1-1h-1a1 1 0 0 0-1 1v4H8V4a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1v4H4a1 1 0 0 0-1 1z"/></svg>',
@@ -343,7 +358,9 @@ function renderCodes(list, totalPlayers){
   const countBox=document.getElementById('playerCount');
   countBox.textContent=`已有${(totalPlayers||0).toLocaleString()}人参与`;
   if(!list.length){box.innerHTML='<span class="empty">暂无兑换码</span>';return;}
-  box.innerHTML=list.map(c=>{
+  // 稳定分区：待官方验证且非中文的码沉到最底部，其余保持原排序（最近更新在前）
+  const ordered=list.slice().sort((a,b)=>(_isBottomCode(a)?1:0)-(_isBottomCode(b)?1:0));
+  box.innerHTML=ordered.map(c=>{
     const upd=c.updated_at ? `${fmtMD(c.updated_at)}更新` : '近期更新';
     // 优先采用官方实测状态：一旦 worker 核实码已过期/无效等，显示真实状态
     const off=c.official_status||'pending';

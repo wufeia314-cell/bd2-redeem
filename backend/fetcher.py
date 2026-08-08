@@ -458,6 +458,7 @@ def fetch_all(sources: list[str] | None = None) -> dict:
         gk = fetch_gamekee_codes()
         per_source["gamekee.com(zsca2)"] = len(gk)
         for c in gk:
+            c["source"] = "auto:gamekee"  # 中文权威源标记，前端据此优先置顶
             merged[c["code"]] = c  # 先入为主，后续源不覆盖
 
     # 2) 其它 HTML 社区源补充
@@ -465,6 +466,7 @@ def fetch_all(sources: list[str] | None = None) -> dict:
         codes = fetch_source(url)
         per_source[_host_of(url)] = len(codes)
         for c in codes:
+            c.setdefault("source", "auto:community")
             merged.setdefault(c["code"], c)
 
     return {
