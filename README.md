@@ -82,10 +82,10 @@ python run.py                          # 默认监听 0.0.0.0:8000（公网/局�
 - 管理端  http://<本机IP或域名>:8000/admin  （右上角填管理员令牌后「连接/刷新」）
 
 **使用流程**
-1. 玩家在首页填 **UID** → 点「立即绑定」（会自动补发所有历史有效码）。绑定有效期 **14 天**，到期前重新绑定可续期。
-2. 若 UID 不是官方接口直接识别的形式，可在高级场景填写 `nickname`（系统优先用 nickname 调用官方接口，未填写时直接用 UID）。
+1. 玩家在首页填 **UID** →（可选但**自动兑换必填**）填**游戏昵称** → 点「立即绑定」（会自动补发所有历史有效码）。绑定有效期 **14 天**，到期前重新绑定可续期。
+2. ⚠️ 官方兑换接口 `userId` 认的是**游戏昵称**，不是 UID。前端绑定条已提供「游戏昵称（自动兑换必填）」输入框；**不填昵称则自动兑换会因 `IncorrectUser` 全部失败**。系统优先用昵称调用官方接口，未填则回退用 UID。
 3. 管理员在 `/admin` 录入新码 → 系统立刻为所有**有效期内**的已绑定玩家排队，后台按限速自动兑换。
-4. **社区自动抓取**：系统每 30 分钟自动从配置的社区源抓取最新礼包码并入库（入库即自动兑换）；也可在 `/admin` 点「立即抓取社区兑换码」手动触发。
+4. **社区自动抓取**：系统**每天**自动从配置的社区源抓取最新礼包码并入库（入库即自动兑换）；服务启动/唤醒会先立即抓一次；也可在 `/admin` 点「立即抓取社区兑换码」手动触发。
 5. 玩家/管理员均可查看每条兑换状态。
 
 #### 🌐 让非本机玩家通过链接访问（公网/局域网）
@@ -120,7 +120,7 @@ python redeem_cli.py --uidfile players.txt --code BD2025SUMMER --qps 2.5
 ## 四、核心 API
 
 玩家端（公开）
-- `POST /api/bind`  绑定 UID `{"uid":"...", "nickname":"可选/游戏昵称", "note":"可选"}`（有效期 14 天）
+- `POST /api/bind`  绑定 UID `{"uid":"...", "nickname":"游戏昵称(自动兑换必填)", "note":"可选"}`（有效期 14 天）
 - `GET  /api/codes`  当前生效礼包码 + 有效玩家总数
 - `GET  /api/status/{uid}`  查询某 UID 的兑换记录
 
@@ -144,10 +144,10 @@ python redeem_cli.py --uidfile players.txt --code BD2025SUMMER --qps 2.5
   单字符纠错（例如 `WAITING4LEGEN` → `WAITING4LEGEND`）。
 - **无害兜底**：抓到的候选码若经 worker 实际兑换判定为无效/过期，会被标记且不影响玩家；管理员可在
   `/admin` 一键去激活。建议定期清理过期码以保持列表整洁。
-- **抓取频率**：`BD2_FETCH_INTERVAL_MIN`（默认 30 分钟）；设 `BD2_FETCH_ENABLED=0` 可关闭。
-
-> 注：官方 GameKee Wiki 兑换码页为 JS 渲染（内容走私有 API），静态抓取通常为空，已在
-> `COUPON_SOURCES` 中注释留作扩展；默认源已能稳定覆盖最新码。
+- **抓取频率**：`BD2_FETCH_INTERVAL_MIN`（默认 **1440 分钟 = 每天一轮**）；设 `BD2_FETCH_ENABLED=0` 可关闭。
+- **优先源 GameKee Wiki 接口**：`fetcher.py` 已逆向接入 GameKee 棕色尘埃2 Wiki 兑换码接口
+  （`GET /v1/game/cdk/queryByServerIdPageList`，需带 `game-alias: zsca2` 头），返回**中文奖励 + 精确过期时间戳**，
+  作为优先源先合并，英文站（ucngame / mobi.gg）仅作补充去重。中文奖励比英文站正则提取更准。
 
 ---
 
@@ -169,7 +169,7 @@ python redeem_cli.py --uidfile players.txt --code BD2025SUMMER --qps 2.5
 | `BD2_MAX_RETRIES` | `3` | 单次网络错误重试次数 |
 | `BD2_DB_PATH` | `data/bd2.db` | 数据库路径 |
 | `BD2_FETCH_ENABLED` | `1`（开） | 社区自动抓取总开关，设 `0` 关闭 |
-| `BD2_FETCH_INTERVAL_MIN` | `30` | 自动抓取间隔（分钟） |
+| `BD2_FETCH_INTERVAL_MIN` | `1440` | 自动抓取间隔（分钟，默认每天一轮） |
 | `BD2_COUPON_SOURCES` | 见 config | 抓取源列表（JSON 数组），覆盖默认源 |
 | `BD2_API_ENDPOINT` / `BD2_APP_ID` | 见 config | 接口地址/应用 ID（若官方变更时改这里） |
 
