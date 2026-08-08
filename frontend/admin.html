@@ -83,6 +83,12 @@
   </div>
 
   <div class="card">
+    <h2>👥 已绑定玩家（有效期内）</h2>
+    <button class="ghost" onclick="loadPlayers()">刷新玩家</button>
+    <div id="players"></div>
+  </div>
+
+  <div class="card">
     <h2>📜 最近兑换记录</h2>
     <button class="ghost" onclick="loadRedemptions()">刷新记录</button>
     <div id="redemptions"></div>
@@ -135,9 +141,10 @@ async function loadRedemptions(){
     if(r.status===401){box.innerHTML='<p style="color:var(--err)">令牌无效</p>';return;}
     const d=await r.json();
     if(!d.records.length){box.innerHTML='<p style="color:var(--sub);font-size:13px">暂无记录</p>';return;}
-    let h='<table><tr><th>昵称</th><th>礼包码</th><th>状态</th><th>尝试</th><th>说明</th><th>更新时间</th></tr>';
+    let h='<table><tr><th>UID</th><th>游戏昵称</th><th>礼包码</th><th>状态</th><th>尝试</th><th>说明</th><th>更新时间</th></tr>';
     for(const x of d.records){
-      h+=`<tr><td>${x.nickname}</td><td style="font-family:monospace">${x.code}</td>
+      h+=`<tr><td>${x.uid}</td><td style="color:var(--sub)">${x.nickname||'-'}</td>
+        <td style="font-family:monospace">${x.code}</td>
         <td class="st ${x.status}">${ST_TEXT[x.status]||x.status}</td>
         <td>${x.attempts}</td><td style="color:var(--sub)">${x.message||''}</td>
         <td style="color:var(--sub)">${(x.updated_at||'').replace('T',' ').slice(0,19)}</td></tr>`;
@@ -146,10 +153,29 @@ async function loadRedemptions(){
   }catch(e){box.innerHTML='<p style="color:var(--err)">加载失败：'+e+'</p>';}
 }
 
+async function loadPlayers(){
+  const box=document.getElementById('players');
+  try{
+    const r=await fetch('/admin/players',{headers:H()});
+    if(r.status===401){box.innerHTML='<p style="color:var(--err)">令牌无效</p>';return;}
+    const d=await r.json();
+    if(!d.players.length){box.innerHTML='<p style="color:var(--sub);font-size:13px">暂无玩家</p>';return;}
+    let h='<table><tr><th>UID</th><th>游戏昵称</th><th>备注</th><th>有效期至</th><th>状态</th></tr>';
+    for(const x of d.players){
+      const active = x.active==1 && new Date(x.expires_at) > new Date();
+      h+=`<tr><td>${x.uid}</td><td style="color:var(--sub)">${x.nickname||'-'}</td>
+        <td style="color:var(--sub)">${x.note||''}</td>
+        <td style="color:var(--sub)">${(x.expires_at||'').replace('T',' ').slice(0,19)}</td>
+        <td class="st ${active?'success':'error'}">${active?'有效期内':'已过期/停用'}</td></tr>`;
+    }
+    box.innerHTML=h+'</table>';
+  }catch(e){box.innerHTML='<p style="color:var(--err)">加载失败：'+e+'</p>';}
+}
+
 async function refreshAll(){
   const msg=document.getElementById('tokenMsg');msg.className='msg';
   const ok=await loadStats();
-  if(ok){msg.className='msg ok';msg.textContent='✅ 已连接';loadRedemptions();loadSources();}
+  if(ok){msg.className='msg ok';msg.textContent='✅ 已连接';loadPlayers();loadRedemptions();loadSources();}
   else{msg.className='msg err';msg.textContent='连接失败，请检查令牌';}
 }
 

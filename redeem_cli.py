@@ -4,14 +4,14 @@
 用途：不启动后端服务，直接测试官方接口 / 手动批量兑换。
 
 用法：
-    # 单个兑换
-    python redeem_cli.py --nickname "你的昵称" --code BD2025SUMMER
+    # 单个兑换（UID 或昵称）
+    python redeem_cli.py --uid "你的UID" --code BD2025SUMMER
 
-    # 一个昵称批量兑换多个码
-    python redeem_cli.py --nickname "你的昵称" --code CODE1 CODE2 CODE3
+    # 一个 UID 批量兑换多个码
+    python redeem_cli.py --uid "你的UID" --code CODE1 CODE2 CODE3
 
-    # 从文件读取昵称列表（每行一个），批量给所有人兑换一个码
-    python redeem_cli.py --nickfile players.txt --code BD2025SUMMER
+    # 从文件读取 UID 列表（每行一个），批量给所有人兑换一个码
+    python redeem_cli.py --uidfile players.txt --code BD2025SUMMER
 """
 from __future__ import annotations
 
@@ -69,31 +69,31 @@ def redeem(nickname: str, code: str, timeout: float = 15.0) -> dict:
 
 def main():
     ap = argparse.ArgumentParser(description="BD2 零依赖兑换工具")
-    ap.add_argument("--nickname", help="单个游戏昵称")
-    ap.add_argument("--nickfile", help="昵称列表文件（每行一个）")
+    ap.add_argument("--uid", "--nickname", dest="uid", help="单个游戏 UID 或昵称")
+    ap.add_argument("--uidfile", "--nickfile", dest="uidfile", help="UID/昵称列表文件（每行一个）")
     ap.add_argument("--code", nargs="+", required=True, help="一个或多个礼包码")
     ap.add_argument("--qps", type=float, default=2.5, help="每秒请求数上限（默认2.5）")
     args = ap.parse_args()
 
-    nicknames = []
-    if args.nickname:
-        nicknames.append(args.nickname.strip())
-    if args.nickfile:
-        with open(args.nickfile, encoding="utf-8") as f:
-            nicknames += [ln.strip() for ln in f if ln.strip()]
-    if not nicknames:
-        ap.error("请用 --nickname 或 --nickfile 指定昵称")
+    uids = []
+    if args.uid:
+        uids.append(args.uid.strip())
+    if args.uidfile:
+        with open(args.uidfile, encoding="utf-8") as f:
+            uids += [ln.strip() for ln in f if ln.strip()]
+    if not uids:
+        ap.error("请用 --uid 或 --uidfile 指定 UID/昵称")
 
     interval = 1.0 / max(args.qps, 0.1)
     total, ok = 0, 0
-    for nick in nicknames:
+    for uid in uids:
         for code in args.code:
             total += 1
-            r = redeem(nick, code)
+            r = redeem(uid, code)
             flag = "✅" if r["status"] == "success" else ("➖" if r["status"] == "AlreadyUsed" else "❌")
             if r["status"] == "success":
                 ok += 1
-            print(f"{flag} [{nick}] {code} -> {r['message']}")
+            print(f"{flag} [{uid}] {code} -> {r['message']}")
             time.sleep(interval)
     print(f"\n完成：{ok}/{total} 成功")
 

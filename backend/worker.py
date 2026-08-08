@@ -40,7 +40,9 @@ def _run_loop() -> None:
                     break
                 t0 = time.monotonic()
 
-                result = redeem_with_retry(job["nickname"], job["code"], client=client)
+                # 官方接口的 userId：优先用玩家填写的 nickname；若为空则用 uid
+                user_id = job["nickname"].strip() or job["uid"].strip()
+                result = redeem_with_retry(user_id, job["code"], client=client)
 
                 if result.status == "network_error":
                     attempts = job["attempts"] + 1

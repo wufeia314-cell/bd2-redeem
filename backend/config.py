@@ -39,6 +39,10 @@ HOST = os.getenv("BD2_HOST", "0.0.0.0")
 # 优先读云平台注入的 PORT（Render/Heroku 标准），回退 BD2_PORT，再回退 8000
 PORT = int(os.getenv("PORT", os.getenv("BD2_PORT", "8000")))
 
+# ---- 玩家绑定有效期 ----
+# 玩家绑定后多少天内有效（默认 7 天）。过期后不再为其自动兑换新码，重新绑定可续期。
+BIND_VALIDITY_DAYS = int(os.getenv("BD2_BIND_VALIDITY_DAYS", "7"))
+
 # ---- 社区兑换码自动抓取 ----
 # 是否启用后台定时抓取（默认开）。设 0 关闭。
 FETCH_ENABLED = os.getenv("BD2_FETCH_ENABLED", "1") != "0"

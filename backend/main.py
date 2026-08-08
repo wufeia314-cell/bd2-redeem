@@ -144,7 +144,8 @@ def health():
 
 # ---------------- 请求模型 ----------------
 class BindReq(BaseModel):
-    nickname: str = Field(..., min_length=1, max_length=24, description="游戏内昵称")
+    uid: str = Field(..., min_length=1, max_length=24, description="游戏内 UID")
+    nickname: str = Field("", max_length=24, description="游戏昵称（如与 UID 不同，兑换时优先用它）")
     note: str = Field("", max_length=64)
 
 
@@ -163,27 +164,27 @@ def require_admin(x_admin_token: str = Header(default="")) -> None:
 # ---------------- 玩家端 ----------------
 @app.post("/api/bind")
 def bind(req: BindReq, request: Request):
-    """玩家绑定昵称。绑定后自动为其补齐所有历史激活礼包码（一次绑定，历史自动补发）。"""
+    """玩家用 UID 绑定。绑定后自动为其补齐所有历史激活礼包码，有效期 7 天。"""
     ip = request.client.host if request.client else "unknown"
     if not _bind_allowed(ip):
         raise HTTPException(status_code=429, detail="绑定过于频繁，请稍后再试")
-    player = db.add_player(req.nickname, req.note)
+    player = db.add_player(req.uid, req.nickname, req.note)
     queued = db.enqueue_all_codes_for_player(player["id"])
     return {"ok": True, "player": player, "queued_history_codes": queued}
 
 
 @app.get("/api/codes")
 def public_codes():
-    """公开：查看当前生效的礼包码列表（含来源）。"""
-    return {"codes": db.list_codes(active_only=True)}
+    """公开：查看当前生效的礼包码列表（含来源）和有效玩家总数。"""
+    s = db.stats()
+    return {"codes": db.list_codes(active_only=True), "total_players": s["players"]}
 
 
-@app.get("/api/status/{nickname}")
-def my_status(nickname: str):
-    """玩家查询自己的兑换情况。"""
-    all_rows = db.recent_redemptions(limit=1000)
-    mine = [r for r in all_rows if r["nickname"] == nickname.strip()]
-    return {"nickname": nickname, "records": mine}
+@app.get("/api/status/{uid}")
+def my_status(uid: str):
+    """玩家用 UID 查询自己的兑换情况。"""
+    records = db.get_player_redemptions(uid.strip(), limit=1000)
+    return {"uid": uid.strip(), "records": records}
 
 
 # ---------------- 管理端 ----------------

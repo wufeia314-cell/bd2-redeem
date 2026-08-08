@@ -24,7 +24,7 @@
 
   /* ===== 顶部 hero ===== */
   .hero{background:linear-gradient(150deg,#6f4621 0%,#8b5a2b 45%,#c9873f 100%);
-        color:#fff;padding:calc(28px + env(safe-area-inset-top)) 20px 30px;position:relative;overflow:hidden}
+        color:#fff;padding:calc(28px + env(safe-area-inset-top)) 20px 22px;position:relative;overflow:hidden}
   .hero::after{content:"";position:absolute;right:-40px;top:-40px;width:160px;height:160px;
         background:radial-gradient(circle,rgba(255,255,255,.18),transparent 70%);border-radius:50%}
   .hero .badge{display:inline-block;font-size:11px;letter-spacing:.5px;background:rgba(255,255,255,.18);
@@ -32,9 +32,23 @@
   .hero h1{margin:0;font-size:21px;font-weight:700;letter-spacing:.5px}
   .hero p{margin:8px 0 0;font-size:13px;opacity:.9;line-height:1.6}
 
+  /* ===== 绑定条（参考图样式） ===== */
+  .bindbar{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px 12px 12px 16px;
+           margin:-20px 16px 0;box-shadow:var(--shadow);display:flex;align-items:center;gap:10px;
+           position:relative;z-index:10}
+  .bindbar input{flex:1;border:0;background:transparent;font-size:15px;outline:none;padding:10px 0;
+                 color:var(--txt);min-width:0}
+  .bindbar input::placeholder{color:#bdb5ad}
+  .bindbar .count{font-size:12px;color:var(--sub);white-space:nowrap}
+  .bindbar button{white-space:nowrap;padding:11px 18px;border:0;border-radius:12px;cursor:pointer;
+                  background:linear-gradient(135deg,#8b5a2b,#a86a30);color:#fff;font-size:15px;font-weight:700;
+                  box-shadow:0 3px 10px rgba(139,90,43,.28);transition:transform .1s,opacity .2s}
+  .bindbar button:active{transform:scale(.97)}
+  .bindbar button:disabled{opacity:.55}
+
   /* ===== 分段 tab ===== */
   .tabs{position:sticky;top:0;z-index:20;display:flex;background:#fff;border-bottom:1px solid var(--line);
-        box-shadow:0 2px 8px rgba(0,0,0,.04)}
+        box-shadow:0 2px 8px rgba(0,0,0,.04);margin-top:18px}
   .tab{flex:1;text-align:center;padding:13px 0;font-size:14px;color:var(--sub);font-weight:600;
         position:relative;cursor:pointer;transition:color .2s}
   .tab.active{color:var(--accent)}
@@ -52,23 +66,6 @@
   .card h2{margin:0 0 2px;font-size:15px;display:flex;align-items:center;gap:6px}
   .card .desc{color:var(--sub);font-size:12.5px;margin:0 0 14px;line-height:1.6}
 
-  label{display:block;font-size:12.5px;color:var(--sub);margin:12px 0 6px}
-  input{width:100%;padding:13px 14px;border:1.5px solid var(--line);border-radius:12px;
-        font-size:16px;background:#fcfaf7;outline:none;transition:.15s;-webkit-appearance:none}
-  input:focus{border-color:var(--accent-l);background:#fff;box-shadow:0 0 0 4px rgba(201,135,63,.12)}
-
-  button{margin-top:16px;width:100%;padding:15px;border:0;border-radius:12px;cursor:pointer;
-        background:linear-gradient(135deg,#8b5a2b,#a86a30);color:#fff;font-size:16px;font-weight:700;
-        box-shadow:0 4px 12px rgba(139,90,43,.3);transition:transform .1s,opacity .2s}
-  button:active{transform:scale(.98)}
-  button:disabled{opacity:.55;box-shadow:none}
-  button.ghost{background:#fff;color:var(--accent);border:1.5px solid var(--chip-l);box-shadow:none;font-weight:600}
-
-  .msg{margin-top:14px;padding:12px 14px;border-radius:12px;font-size:13.5px;display:none;line-height:1.55}
-  .msg.ok{background:#e9f7ee;color:var(--ok);display:block}
-  .msg.err{background:#fdeceb;color:var(--err);display:block}
-  .msg.info{background:#eef3fb;color:#1f5fbf;display:block}
-
   /* 已绑定状态卡 */
   .me{display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,#fff7ee,#fbeede);
         border:1px solid var(--chip-l);border-radius:14px;padding:14px;margin-bottom:14px}
@@ -76,6 +73,7 @@
         justify-content:center;background:var(--accent);color:#fff;font-size:20px;font-weight:700}
   .me .who{font-size:15px;font-weight:700;word-break:break-all}
   .me .st-txt{font-size:12px;color:var(--sub);margin-top:2px}
+  .me .exp{font-size:11px;color:var(--accent-d);margin-top:3px}
 
   /* 礼包码 chips */
   .codes{display:flex;flex-wrap:wrap;gap:8px}
@@ -109,32 +107,24 @@
   <div class="hero">
     <span class="badge">BD2 · 自动兑换</span>
     <h1>🎁 礼包码自动兑换</h1>
-    <p>绑定一次游戏昵称，之后每次更新礼包码系统都会自动帮你兑换，奖励直接进游戏邮箱。</p>
+    <p>输入游戏 UID 绑定一次，后续新礼包码自动帮你兑换，奖励直达游戏邮箱。</p>
+  </div>
+
+  <!-- 参考图样式的 UID 绑定条 -->
+  <div class="bindbar">
+    <input id="uid" maxlength="24" placeholder="请输入游戏内UID" autocomplete="off" />
+    <span class="count" id="playerCount">已有人参与</span>
+    <button id="bindBtn" onclick="bind()">立即绑定</button>
   </div>
 
   <div class="tabs">
-    <div class="tab active" data-tab="bind" onclick="switchTab('bind')">绑定</div>
-    <div class="tab" data-tab="codes" onclick="switchTab('codes')">礼包码</div>
+    <div class="tab active" data-tab="codes" onclick="switchTab('codes')">礼包码</div>
     <div class="tab" data-tab="mine" onclick="switchTab('mine')">我的记录</div>
   </div>
 
   <div class="panels">
-    <!-- 绑定面板 -->
-    <div class="panel active" id="panel-bind">
-      <div class="card">
-        <h2>① 绑定游戏昵称</h2>
-        <p class="desc">请填写与游戏内<strong>完全一致</strong>的昵称（区分大小写与符号）。绑定后会自动补发所有历史有效码并持续自动兑换。</p>
-        <label>游戏昵称</label>
-        <input id="nickname" maxlength="24" placeholder="例如：StoreManager007" autocomplete="off" />
-        <label>备注（可选，如区服）</label>
-        <input id="note" maxlength="64" placeholder="例如：官服 / 亚洲服" autocomplete="off" />
-        <button id="bindBtn" onclick="bind()">绑定并开启自动兑换</button>
-        <div id="bindMsg" class="msg"></div>
-      </div>
-    </div>
-
     <!-- 礼包码面板 -->
-    <div class="panel" id="panel-codes">
+    <div class="panel active" id="panel-codes">
       <div class="card">
         <h2>② 当前生效的礼包码</h2>
         <p class="desc">系统已收录、正在自动为已绑定玩家兑换的码。🌐 来自社区自动抓取，✍️ 来自管理员手动录入。</p>
@@ -146,11 +136,10 @@
     <div class="panel" id="panel-mine">
       <div class="card">
         <h2>③ 我的兑换记录</h2>
-        <p class="desc">输入已绑定的昵称查询兑换进度，或绑定后自动展示。</p>
+        <p class="desc">绑定后自动展示你的兑换进度。若换设备查询，可重新输入 UID。</p>
         <div id="meBox"></div>
-        <label>查询昵称</label>
-        <input id="queryNick" maxlength="24" placeholder="你绑定的昵称" autocomplete="off" />
-        <button class="ghost" onclick="queryStatus()">查询记录</button>
+        <input id="queryUid" maxlength="24" placeholder="输入游戏 UID 查询" autocomplete="off" style="margin-top:12px" />
+        <button class="ghost" style="margin-top:12px" onclick="queryStatus()">查询记录</button>
         <div id="statusBox"></div>
       </div>
     </div>
@@ -158,6 +147,7 @@
 
   <div class="foot">
     仅调用官方公开兑换接口（redeem.bd2.pmang.cloud），奖励发放至游戏邮箱。<br/>
+    绑定有效期 7 天，到期后自动停止为你兑换新码，可重新绑定续期。<br/>
     本工具与 NEOWIZ 无隶属关系，请遵守游戏服务条款，理性使用。
   </div>
 </div>
@@ -167,7 +157,7 @@
 <script>
 const ST_TEXT = {success:"已兑换",already:"已兑换",pending:"排队中",failed:"失败",
   invalid:"码无效",expired:"已过期",exceeded:"超上限",unavailable:"不可用",
-  bad_user:"昵称错误",error:"失败"};
+  bad_user:"UID/昵称错误",error:"失败"};
 
 function toast(msg){
   const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
@@ -177,10 +167,10 @@ function switchTab(name){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
   document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id==='panel-'+name));
   if(name==='codes') loadCodes();
-  if(name==='mine' && document.getElementById('meBox').dataset.nick) queryStatus();
+  if(name==='mine' && document.getElementById('meBox').dataset.uid) queryStatus();
 }
 
-// 健壮请求：先读文本再解析，带超时，出错暴露真实 HTTP 状态码 + 原始片段（排查代理/部署链路）
+// 健壮请求：先读文本再解析，带超时，出错暴露真实 HTTP 状态码 + 原始片段
 async function requestJson(url, method, body){
   const ctrl=new AbortController();
   const timer=setTimeout(()=>ctrl.abort(),20000);
@@ -196,39 +186,48 @@ async function requestJson(url, method, body){
   }finally{clearTimeout(timer);}
 }
 
-function showMe(nick){
-  document.getElementById('meBox').dataset.nick=nick;
+function fmtDate(iso){
+  if(!iso) return '';
+  const d=new Date(iso);
+  if(isNaN(d)) return iso;
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function showMe(uid, player){
+  document.getElementById('meBox').dataset.uid=uid;
+  const exp=player?.expires_at ? `有效期至 ${fmtDate(player.expires_at)}` : '有效期 7 天';
   document.getElementById('meBox').innerHTML=
-    `<div class="me"><div class="ava">${nick.slice(0,1).toUpperCase()}</div>
-     <div><div class="who">${nick}</div><div class="st-txt">✅ 已绑定 · 新礼包码将自动兑换</div></div></div>`;
+    `<div class="me"><div class="ava">${uid.slice(0,1).toUpperCase()}</div>
+     <div><div class="who">${uid}</div><div class="st-txt">✅ 已绑定 · 新礼包码将自动兑换</div>
+     <div class="exp">📅 ${exp} · 到期前重新绑定可续期</div></div></div>`;
 }
 
 async function bind(){
-  const nickname=document.getElementById('nickname').value.trim();
-  const note=document.getElementById('note').value.trim();
-  const msg=document.getElementById('bindMsg'),btn=document.getElementById('bindBtn');
-  msg.className='msg';
-  if(!nickname){toast('请填写游戏昵称');msg.className='msg err';msg.textContent='请填写游戏昵称';return;}
+  const uid=document.getElementById('uid').value.trim();
+  const btn=document.getElementById('bindBtn');
+  if(!uid){toast('请输入游戏内UID');return;}
   btn.disabled=true;btn.textContent='绑定中…';
   try{
-    const {ok,data}=await requestJson('/api/bind','POST',{nickname,note});
+    const {ok,data}=await requestJson('/api/bind','POST',{uid});
     if(ok){
-      msg.className='msg ok';
-      msg.textContent=`✅ 绑定成功！已为「${nickname}」排入 ${data.queued_history_codes??0} 个历史礼包码，正在后台自动兑换。`;
-      showMe(nickname);
-      toast('绑定成功，已开启自动兑换');
+      showMe(uid, data.player);
+      toast(`绑定成功！已排入 ${data.queued_history_codes??0} 个历史礼包码`);
       switchTab('mine');
       queryStatus();
-    }else{msg.className='msg err';msg.textContent='绑定失败：'+(data.detail||JSON.stringify(data));}
-  }catch(e){msg.className='msg err';msg.textContent='绑定出错：'+e.message;toast('绑定出错，详见提示');}
-  btn.disabled=false;btn.textContent='绑定并开启自动兑换';
+      loadCodes();
+    }else{toast('绑定失败：'+(data.detail||JSON.stringify(data)));}
+  }catch(e){toast('绑定出错：'+e.message);}
+  btn.disabled=false;btn.textContent='立即绑定';
 }
 
 async function loadCodes(){
   const box=document.getElementById('codes');
+  const countBox=document.getElementById('playerCount');
   try{
     const {ok,data}=await requestJson('/api/codes','GET');
     if(!ok){box.innerHTML='<span class="empty">加载失败</span>';return;}
+    const n=data.total_players||0;
+    countBox.textContent=`已有${n.toLocaleString()}人参与`;
     if(!data.codes.length){box.innerHTML='<span class="empty">暂无生效礼包码</span>';return;}
     box.innerHTML=data.codes.map(c=>{
       const src=c.source&&c.source.startsWith('auto')?'🌐':'✍️';
@@ -239,17 +238,17 @@ async function loadCodes(){
 }
 
 async function queryStatus(){
-  const nick=(document.getElementById('queryNick').value.trim()
-            || document.getElementById('meBox').dataset.nick || '');
+  const uid=(document.getElementById('queryUid').value.trim()
+            || document.getElementById('meBox').dataset.uid || '');
   const box=document.getElementById('statusBox');
-  if(!nick){box.innerHTML='';toast('请先输入或绑定昵称');return;}
-  document.getElementById('queryNick').value=nick;
-  if(!document.getElementById('meBox').dataset.nick) showMe(nick);
+  if(!uid){box.innerHTML='';toast('请先输入 UID 或绑定');return;}
+  document.getElementById('queryUid').value=uid;
+  if(!document.getElementById('meBox').dataset.uid) showMe(uid, null);
   box.innerHTML='<p class="empty">查询中…</p>';
   try{
-    const {ok,data}=await requestJson('/api/status/'+encodeURIComponent(nick),'GET');
+    const {ok,data}=await requestJson('/api/status/'+encodeURIComponent(uid),'GET');
     if(!ok){box.innerHTML='<p class="empty">查询失败</p>';return;}
-    if(!data.records.length){box.innerHTML='<p class="empty">没有该昵称的兑换记录，请先绑定。</p>';return;}
+    if(!data.records.length){box.innerHTML='<p class="empty">暂无兑换记录，绑定后稍等片刻再来查。</p>';return;}
     let h='';
     const order={success:0,already:0,pending:1,failed:2,invalid:2,expired:2,bad_user:2,error:2};
     data.records.sort((a,b)=>(order[a.status]??9)-(order[b.status]??9));
@@ -264,9 +263,12 @@ async function queryStatus(){
   }catch(e){box.innerHTML='<p class="empty">查询失败：'+e.message+'</p>';}
 }
 
+// 回车快捷绑定
+document.getElementById('uid').addEventListener('keypress', e=>{if(e.key==='Enter') bind();});
+
 // 进入时检查连通性并预载礼包码
 (async function init(){
-  try{ await requestJson('/api/health','GET'); }catch(e){ /* 静默，不影响页面 */ }
+  try{ await requestJson('/api/health','GET'); }catch(e){ /* 静默 */ }
   loadCodes();
 })();
 </script>
