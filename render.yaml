@@ -4,7 +4,7 @@
 services:
   - type: web
     name: bd2-redeem
-    runtime: python
+    env: python
     plan: free
     buildCommand: "pip install -r backend/requirements.txt"
     startCommand: "python backend/run.py"
