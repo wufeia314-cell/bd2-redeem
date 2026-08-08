@@ -40,8 +40,8 @@ HOST = os.getenv("BD2_HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", os.getenv("BD2_PORT", "8000")))
 
 # ---- 玩家绑定有效期 ----
-# 玩家绑定后多少天内有效（默认 7 天）。过期后不再为其自动兑换新码，重新绑定可续期。
-BIND_VALIDITY_DAYS = int(os.getenv("BD2_BIND_VALIDITY_DAYS", "7"))
+# 玩家绑定后多少天内有效（默认 14 天）。过期后不再为其自动兑换新码，重新绑定可续期。
+BIND_VALIDITY_DAYS = int(os.getenv("BD2_BIND_VALIDITY_DAYS", "14"))
 
 # ---- 参与者计数基数 ----
 # 展示的「已有 X 人参与」由 基数 + 实际绑定人数 构成。基数是一个固定起始值，

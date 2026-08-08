@@ -39,7 +39,7 @@ def get_conn():
 
 def _migrate_players_v1(conn):
     """兼容旧库：原 players 表以 nickname 为主键，现改为 uid 主键 + 有效期。"""
-    print("[db] 检测到旧版 players 表，执行迁移到 UID + 7 天有效期 schema")
+    print("[db] 检测到旧版 players 表，执行迁移到 UID + 14 天有效期 schema")
     conn.execute(
         """
         CREATE TABLE players_new (
@@ -99,7 +99,7 @@ def init_db() -> None:
                 note        TEXT DEFAULT '',          -- 备注(如区服说明)
                 active      INTEGER NOT NULL DEFAULT 1,
                 created_at  TEXT NOT NULL,
-                expires_at  TEXT NOT NULL            -- 绑定有效期(默认 7 天)
+                expires_at  TEXT NOT NULL            -- 绑定有效期(默认 14 天)
             );
 
             -- 礼包码表：包含奖励描述、过期时间、更新时间等展示字段

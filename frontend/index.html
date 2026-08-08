@@ -168,7 +168,7 @@
     <span class="badge">BD2 · 自动兑换</span>
     <h1>🎁 礼包码自动兑换</h1>
     <p>输入游戏 UID 绑定一次，后续新礼包码自动帮你兑换，奖励直达游戏邮箱。</p>
-    <div class="hero-note"><span class="k">绑定有效期</span><span class="v">7 天 · 到期自动停止为你兑换新码 · 可重新绑定续期</span></div>
+    <div class="hero-note"><span class="k">绑定有效期</span><span class="v">14 天 · 到期自动停止为你兑换新码 · 可重新绑定续期</span></div>
   </div>
 
   <!-- 参考图样式的 UID 绑定条 -->
@@ -214,7 +214,7 @@
 
   <div class="foot">
     仅调用官方公开兑换接口（redeem.bd2.pmang.cloud），奖励发放至游戏邮箱。<br/>
-    绑定有效期 7 天，到期后自动停止为你兑换新码，可重新绑定续期。<br/>
+    绑定有效期 14 天，到期后自动停止为你兑换新码，可重新绑定续期。<br/>
     本工具与 NEOWIZ 无隶属关系，请遵守游戏服务条款，理性使用。
   </div>
 </div>
@@ -304,7 +304,7 @@ const COPY_SVG='<svg viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="14
 
 function showMe(uid, player){
   document.getElementById('meBox').dataset.uid=uid;
-  const exp=player?.expires_at ? `有效期至 ${fmtDate(player.expires_at)}` : '有效期 7 天';
+  const exp=player?.expires_at ? `有效期至 ${fmtDate(player.expires_at)}` : '有效期 14 天';
   document.getElementById('meBox').innerHTML=
     `<div class="me"><div class="ava">${uid.slice(0,1).toUpperCase()}</div>
      <div><div class="who">${uid}</div><div class="st-txt">✅ 已绑定 · 新礼包码将自动兑换</div>

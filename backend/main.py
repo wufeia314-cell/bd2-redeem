@@ -182,7 +182,7 @@ def require_admin(x_admin_token: str = Header(default="")) -> None:
 # ---------------- 玩家端 ----------------
 @app.post("/api/bind")
 def bind(req: BindReq, request: Request):
-    """玩家用 UID 绑定。绑定后自动为其补齐所有历史激活礼包码，有效期 7 天。"""
+    """玩家用 UID 绑定。绑定后自动为其补齐所有历史激活礼包码，有效期 14 天。"""
     ip = request.client.host if request.client else "unknown"
     if not _bind_allowed(ip):
         raise HTTPException(status_code=429, detail="绑定过于频繁，请稍后再试")
