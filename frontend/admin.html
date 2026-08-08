@@ -58,11 +58,24 @@
     <h2>➕ 录入新礼包码（保存后自动为所有已绑定玩家兑换）</h2>
     <div class="row">
       <div><label>礼包码</label><input id="code" maxlength="20" placeholder="例如 BD2025SUMMER" /></div>
-      <div><label>说明（可选）</label><input id="cdesc" maxlength="128" placeholder="例如 5星招募券1张" /></div>
+      <div><label>奖励名称</label><input id="creward" maxlength="64" placeholder="例如 5星招募券 / 抽 / 粉" /></div>
+      <div><label>数量</label><input id="cqty" maxlength="16" placeholder="例如 x3 / x100000" /></div>
+      <div><label>图标关键字</label><input id="cicon" maxlength="16" placeholder="gift/ticket/powder/gold/deco/gear/exp" /></div>
+      <div><label>说明（可选）</label><input id="cdesc" maxlength="128" placeholder="例如 官方直播通用码" /></div>
       <div><label>过期时间（可选，ISO）</label><input id="cexp" placeholder="2026-12-31T23:59" /></div>
     </div>
     <button onclick="addCode()">录入并触发自动兑换</button>
     <div id="codeMsg" class="msg"></div>
+  </div>
+
+  <div class="card">
+    <h2>🎫 礼包码管理</h2>
+    <p style="font-size:13px;color:var(--sub);margin:0 0 10px">
+      可编辑奖励名称/数量/图标/过期时间，或删除误抓/失效码。图标关键字：gift/ticket/powder/gold/deco/gear/exp。
+    </p>
+    <button class="ghost" onclick="loadAdminCodes()">刷新礼包码列表</button>
+    <div id="codeList" style="margin-top:12px;overflow-x:auto"></div>
+    <div id="codeEditMsg" class="msg"></div>
   </div>
 
   <div class="card">
@@ -103,18 +116,85 @@ function H(){return {'Content-Type':'application/json','X-Admin-Token':token()};
 
 async function addCode(){
   const code=document.getElementById('code').value.trim();
+  const reward_name=document.getElementById('creward').value.trim();
+  const reward_qty=document.getElementById('cqty').value.trim();
+  const reward_icon=document.getElementById('cicon').value.trim();
   const description=document.getElementById('cdesc').value.trim();
   const expires_at=document.getElementById('cexp').value.trim()||null;
   const msg=document.getElementById('codeMsg');msg.className='msg';
   if(!code){msg.className='msg err';msg.textContent='请填写礼包码';return;}
   try{
     const r=await fetch('/admin/codes',{method:'POST',headers:H(),
-      body:JSON.stringify({code,description,expires_at})});
+      body:JSON.stringify({code,reward_name,reward_qty,reward_icon,description,expires_at})});
     const d=await r.json();
     if(r.ok){msg.className='msg ok';
       msg.textContent=`✅ 已录入「${code}」，为 ${d.queued_players} 位玩家排入兑换队列，后台自动执行中。`;
       document.getElementById('code').value='';document.getElementById('cdesc').value='';
-      setTimeout(refreshAll,800);}
+      document.getElementById('creward').value='';document.getElementById('cqty').value='';
+      document.getElementById('cicon').value='';document.getElementById('cexp').value='';
+      setTimeout(()=>{refreshAll();loadAdminCodes();},800);}
+    else{msg.className='msg err';msg.textContent='失败：'+(d.detail||JSON.stringify(d));}
+  }catch(e){msg.className='msg err';msg.textContent='网络错误：'+e;}
+}
+
+let _adminCodes=[];
+async function loadAdminCodes(){
+  const box=document.getElementById('codeList');
+  try{
+    const r=await fetch('/admin/codes',{headers:H()});
+    if(r.status===401){box.innerHTML='<p style="color:var(--err);font-size:13px">令牌无效</p>';return;}
+    const d=await r.json();
+    _adminCodes=d.codes||[];
+    if(!_adminCodes.length){box.innerHTML='<p style="color:var(--sub);font-size:13px">暂无礼包码</p>';return;}
+    renderAdminCodeTable();
+  }catch(e){box.innerHTML='<p style="color:var(--err);font-size:13px">加载失败：'+e+'</p>';}
+}
+
+function renderAdminCodeTable(){
+  const box=document.getElementById('codeList');
+  let h='<table><tr><th>礼包码</th><th>奖励</th><th>数量</th><th>图标</th><th>过期时间</th><th>状态</th><th>操作</th></tr>';
+  for(const x of _adminCodes){
+    h+=`<tr data-code="${x.code}">
+      <td style="font-family:monospace;font-weight:600">${x.code}</td>
+      <td><input data-field="reward_name" value="${esc(x.reward_name||'')}" style="min-width:90px" /></td>
+      <td><input data-field="reward_qty" value="${esc(x.reward_qty||'')}" style="width:70px" /></td>
+      <td><input data-field="reward_icon" value="${esc(x.reward_icon||'')}" style="width:70px" /></td>
+      <td><input data-field="expires_at" value="${esc(x.expires_at||'')}" placeholder="永久有效" style="width:120px" /></td>
+      <td class="st ${x.status}">${x.status==='active'?'生效':x.status==='expired'?'已过期':'停用'}</td>
+      <td>
+        <button onclick="saveCodeRow('${x.code}')" style="padding:6px 10px;margin-top:0">保存</button>
+        <button class="ghost" onclick="deleteCode('${x.code}')" style="padding:6px 10px;margin-top:0;margin-left:4px">删除</button>
+      </td>
+    </tr>`;
+  }
+  box.innerHTML=h+'</table>';
+}
+
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+async function saveCodeRow(code){
+  const row=document.querySelector(`tr[data-code="${code}"]`);
+  const msg=document.getElementById('codeEditMsg');msg.className='msg';
+  const payload={};
+  row.querySelectorAll('input[data-field]').forEach(i=>{
+    const k=i.dataset.field;
+    payload[k]=i.value.trim();
+  });
+  try{
+    const r=await fetch('/admin/codes/'+encodeURIComponent(code),{method:'PUT',headers:H(),body:JSON.stringify(payload)});
+    const d=await r.json();
+    if(r.ok){msg.className='msg ok';msg.textContent='✅ 已保存 '+code;loadAdminCodes();}
+    else{msg.className='msg err';msg.textContent='失败：'+(d.detail||JSON.stringify(d));}
+  }catch(e){msg.className='msg err';msg.textContent='网络错误：'+e;}
+}
+
+async function deleteCode(code){
+  if(!confirm('确定删除 '+code+'？关联兑换记录也会被级联删除。')) return;
+  const msg=document.getElementById('codeEditMsg');msg.className='msg';
+  try{
+    const r=await fetch('/admin/codes/'+encodeURIComponent(code),{method:'DELETE',headers:H()});
+    const d=await r.json();
+    if(r.ok){msg.className='msg ok';msg.textContent='✅ 已删除 '+code;loadAdminCodes();}
     else{msg.className='msg err';msg.textContent='失败：'+(d.detail||JSON.stringify(d));}
   }catch(e){msg.className='msg err';msg.textContent='网络错误：'+e;}
 }
@@ -175,7 +255,7 @@ async function loadPlayers(){
 async function refreshAll(){
   const msg=document.getElementById('tokenMsg');msg.className='msg';
   const ok=await loadStats();
-  if(ok){msg.className='msg ok';msg.textContent='✅ 已连接';loadPlayers();loadRedemptions();loadSources();}
+  if(ok){msg.className='msg ok';msg.textContent='✅ 已连接';loadPlayers();loadRedemptions();loadSources();loadAdminCodes();}
   else{msg.className='msg err';msg.textContent='连接失败，请检查令牌';}
 }
 

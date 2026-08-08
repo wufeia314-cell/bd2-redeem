@@ -1,4 +1,4 @@
-"""SQLite 数据层：玩家表(UID 主键+7天有效期)、礼包码表、兑换记录关联表。"""
+"""SQLite 数据层：玩家表(UID 主键+7天有效期)、礼包码表(含奖励/过期/状态)、兑换记录关联表。"""
 from __future__ import annotations
 
 import os
@@ -73,6 +73,20 @@ def _migrate_players_v1(conn):
     conn.execute("ALTER TABLE players_new RENAME TO players")
 
 
+def _migrate_codes_v2(conn):
+    """兼容旧库：codes 表新增 reward 相关字段与 updated_at。"""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(codes)").fetchall()}
+    if "reward_name" in cols:
+        return
+    print("[db] 检测到旧版 codes 表，执行迁移到含奖励/过期/状态 schema")
+    conn.execute("ALTER TABLE codes ADD COLUMN reward_name TEXT DEFAULT ''")
+    conn.execute("ALTER TABLE codes ADD COLUMN reward_qty  TEXT DEFAULT ''")
+    conn.execute("ALTER TABLE codes ADD COLUMN reward_icon TEXT DEFAULT ''")
+    conn.execute("ALTER TABLE codes ADD COLUMN updated_at  TEXT DEFAULT ''")
+    # 旧数据用 created_at 作为首次更新时间
+    conn.execute("UPDATE codes SET updated_at = created_at WHERE COALESCE(updated_at,'') = ''")
+
+
 def init_db() -> None:
     with get_conn() as conn:
         conn.executescript(
@@ -81,19 +95,23 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS players (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 uid         TEXT NOT NULL UNIQUE,    -- 玩家输入的 UID
-                nickname    TEXT DEFAULT '',           -- 游戏昵称(与 UID 不同时，优先用它兑换)
+                nickname    TEXT DEFAULT '',           -- 游戏昵称(与 UID 不同时，兑换时优先用它)
                 note        TEXT DEFAULT '',          -- 备注(如区服说明)
                 active      INTEGER NOT NULL DEFAULT 1,
                 created_at  TEXT NOT NULL,
                 expires_at  TEXT NOT NULL            -- 绑定有效期(默认 7 天)
             );
 
-            -- 礼包码表
+            -- 礼包码表：包含奖励描述、过期时间、更新时间等展示字段
             CREATE TABLE IF NOT EXISTS codes (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 code        TEXT NOT NULL UNIQUE,
-                description TEXT DEFAULT '',
-                expires_at  TEXT,                    -- ISO 时间，可空
+                description TEXT DEFAULT '',          -- 通用描述/来源描述
+                reward_name TEXT DEFAULT '',          -- 奖励名称（如 抽、粉、金币）
+                reward_qty  TEXT DEFAULT '',          -- 奖励数量（如 x3）
+                reward_icon TEXT DEFAULT '',          -- 图标关键字（前端映射）
+                expires_at  TEXT,                     -- ISO 时间，可空=永久有效
+                updated_at  TEXT NOT NULL,            -- 最后发现/更新时间
                 active      INTEGER NOT NULL DEFAULT 1,
                 source      TEXT NOT NULL DEFAULT '',
                 created_at  TEXT NOT NULL
@@ -115,7 +133,7 @@ def init_db() -> None:
             """
         )
 
-        # 旧库迁移：若 players 表已存在但没有 uid 列
+        # 旧库迁移
         tables = {
             r["name"]
             for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
@@ -126,6 +144,8 @@ def init_db() -> None:
             }
             if "uid" not in cols:
                 _migrate_players_v1(conn)
+        if "codes" in tables:
+            _migrate_codes_v2(conn)
 
 
 # ---------------- 玩家 ----------------
@@ -170,28 +190,131 @@ def deactivate_player(uid: str) -> None:
 
 
 # ---------------- 礼包码 ----------------
-def add_code(code: str, description: str = "", expires_at: str | None = None,
-             source: str = "manual") -> dict:
-    code = code.strip()
+def _code_status(row: dict) -> str:
+    """根据数据库行计算礼包码全局状态。"""
+    if not row.get("active"):
+        return "inactive"
+    exp = row.get("expires_at")
+    if exp:
+        try:
+            if datetime.fromisoformat(exp) < datetime.now(timezone.utc).replace(tzinfo=None):
+                return "expired"
+        except Exception:
+            pass
+    return "active"
+
+
+def _enrich_code(row: sqlite3.Row) -> dict:
+    d = dict(row)
+    d["status"] = _code_status(d)
+    return d
+
+
+def add_code(
+    code: str,
+    description: str = "",
+    reward_name: str = "",
+    reward_qty: str = "",
+    reward_icon: str = "",
+    expires_at: str | None = None,
+    source: str = "manual",
+) -> dict:
+    code = code.strip().upper()
     if not code:
         raise ValueError("礼包码不能为空")
+    now = _now()
     with _lock, get_conn() as conn:
         cur = conn.execute(
-            "INSERT INTO codes(code, description, expires_at, active, source, created_at) "
-            "VALUES(?,?,?,1,?,?) "
-            "ON CONFLICT(code) DO UPDATE SET active=1, description=excluded.description, "
-            "expires_at=excluded.expires_at, source=excluded.source RETURNING *",
-            (code, description, expires_at, source, _now()),
+            """
+            INSERT INTO codes(code, description, reward_name, reward_qty, reward_icon,
+                              expires_at, updated_at, active, source, created_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(code) DO UPDATE SET
+                active=1,
+                source=excluded.source,
+                updated_at=excluded.updated_at,
+                expires_at=COALESCE(excluded.expires_at, codes.expires_at),
+                description=COALESCE(NULLIF(excluded.description,''), codes.description),
+                reward_name=COALESCE(NULLIF(excluded.reward_name,''), codes.reward_name),
+                reward_qty= COALESCE(NULLIF(excluded.reward_qty,''),  codes.reward_qty),
+                reward_icon=COALESCE(NULLIF(excluded.reward_icon,''), codes.reward_icon)
+            RETURNING *
+            """,
+            (
+                code,
+                description.strip(),
+                reward_name.strip(),
+                reward_qty.strip(),
+                reward_icon.strip(),
+                expires_at,
+                now,
+                1,
+                source,
+                now,
+            ),
         )
-        return dict(cur.fetchone())
+        return _enrich_code(cur.fetchone())
 
 
-def add_code_and_enqueue(code: str, description: str = "", expires_at: str | None = None,
-                         source: str = "manual") -> tuple[dict, int]:
+def add_code_and_enqueue(
+    code: str,
+    description: str = "",
+    reward_name: str = "",
+    reward_qty: str = "",
+    reward_icon: str = "",
+    expires_at: str | None = None,
+    source: str = "manual",
+) -> tuple[dict, int]:
     """录入礼包码并立即为所有在有效期内玩家生成 pending 任务。返回 (code行, 新建任务数)。"""
-    row = add_code(code, description, expires_at, source)
+    row = add_code(code, description, reward_name, reward_qty, reward_icon, expires_at, source)
     queued = enqueue_redemptions_for_code(row["id"])
     return row, queued
+
+
+def update_code(
+    code: str,
+    reward_name: str | None = None,
+    reward_qty: str | None = None,
+    reward_icon: str | None = None,
+    description: str | None = None,
+    expires_at: str | None = None,
+    active: bool | None = None,
+) -> dict | None:
+    """管理员精确更新某个礼包码的元数据（空字符串可清空字段）。"""
+    code = code.strip().upper()
+    fields: list[tuple[str, any]] = []
+    if reward_name is not None:
+        fields.append(("reward_name", reward_name.strip()))
+    if reward_qty is not None:
+        fields.append(("reward_qty", reward_qty.strip()))
+    if reward_icon is not None:
+        fields.append(("reward_icon", reward_icon.strip()))
+    if description is not None:
+        fields.append(("description", description.strip()))
+    if expires_at is not None:
+        fields.append(("expires_at", expires_at if expires_at.strip() else None))
+    if active is not None:
+        fields.append(("active", 1 if active else 0))
+    if not fields:
+        with get_conn() as conn:
+            row = conn.execute("SELECT * FROM codes WHERE code=?", (code,)).fetchone()
+            return _enrich_code(row) if row else None
+
+    fields.append(("updated_at", _now()))
+    sql = "UPDATE codes SET " + ", ".join(f"{k}=?" for k, _ in fields) + " WHERE code=?"
+    values = [v for _, v in fields] + [code]
+    with _lock, get_conn() as conn:
+        cur = conn.execute(sql, values)
+        if cur.rowcount == 0:
+            return None
+        row = conn.execute("SELECT * FROM codes WHERE code=?", (code,)).fetchone()
+        return _enrich_code(row)
+
+
+def delete_code(code: str) -> bool:
+    with _lock, get_conn() as conn:
+        cur = conn.execute("DELETE FROM codes WHERE code=?", (code.strip().upper(),))
+        return cur.rowcount > 0
 
 
 def deactivate_code(code: str) -> bool:
@@ -201,13 +324,19 @@ def deactivate_code(code: str) -> bool:
         return cur.rowcount > 0
 
 
-def list_codes(active_only: bool = False) -> list[dict]:
+def list_codes(active_only: bool = False, include_expired: bool = True) -> list[dict]:
     q = "SELECT * FROM codes"
+    params = []
     if active_only:
         q += " WHERE active=1"
-    q += " ORDER BY id DESC"
+    q += " ORDER BY updated_at DESC, id DESC"
     with get_conn() as conn:
-        return [dict(r) for r in conn.execute(q).fetchall()]
+        rows = [dict(r) for r in conn.execute(q, params).fetchall()]
+    for r in rows:
+        r["status"] = _code_status(r)
+    if active_only and not include_expired:
+        rows = [r for r in rows if r["status"] != "expired"]
+    return rows
 
 
 # ---------------- 兑换记录 ----------------

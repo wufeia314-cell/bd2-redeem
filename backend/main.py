@@ -76,9 +76,17 @@ def _run_fetch() -> dict:
     for c in result.get("codes", []):
         try:
             row, queued = db.add_code_and_enqueue(
-                c["code"], c.get("description", ""), source="auto:community"
+                c["code"],
+                c.get("description", ""),
+                c.get("reward_name", ""),
+                c.get("reward_qty", ""),
+                c.get("reward_icon", ""),
+                c.get("expires_at"),
+                source="auto:community",
             )
-            if queued > 0:
+            # 新入库：created_at == updated_at 说明是本次插入的新行；
+            # queued>0 说明有玩家被排入兑换队列（兼容 players 非空的情况）
+            if (row.get("created_at") == row.get("updated_at")) or queued > 0:
                 added += 1
         except Exception as exc:  # noqa: BLE001
             print(f"[scheduler] 入库失败 {c['code']}: {exc}")
@@ -152,6 +160,9 @@ class BindReq(BaseModel):
 class CodeReq(BaseModel):
     code: str = Field(..., min_length=1, max_length=20)
     description: str = Field("", max_length=128)
+    reward_name: str = Field("", max_length=64, description="奖励名称，如 抽 / 粉 / 金币 / 招募券")
+    reward_qty: str = Field("", max_length=16, description="奖励数量，如 x3 / x100000")
+    reward_icon: str = Field("", max_length=16, description="图标关键字：gift/ticket/powder/gold/deco/gear/exp")
     expires_at: str | None = Field(None, description="ISO 时间，可空")
     source: str = Field("manual", max_length=32)
 
@@ -174,10 +185,11 @@ def bind(req: BindReq, request: Request):
 
 
 @app.get("/api/codes")
-def public_codes():
-    """公开：查看当前生效的礼包码列表（含来源）和有效玩家总数。"""
+def public_codes(show_expired: bool = False):
+    """公开：查看当前礼包码列表（默认隐藏过期码）和有效玩家总数。"""
     s = db.stats()
-    return {"codes": db.list_codes(active_only=True), "total_players": s["players"]}
+    codes = db.list_codes(active_only=True, include_expired=show_expired)
+    return {"codes": codes, "total_players": s["players"], "show_expired": show_expired}
 
 
 @app.get("/api/status/{uid}")
@@ -191,8 +203,50 @@ def my_status(uid: str):
 @app.post("/admin/codes", dependencies=[Depends(require_admin)])
 def admin_add_code(req: CodeReq):
     """管理员录入新礼包码 → 立即为所有已绑定玩家生成 pending 任务，后台自动兑换。"""
-    code, queued = db.add_code_and_enqueue(req.code, req.description, req.expires_at, req.source)
+    code, queued = db.add_code_and_enqueue(
+        req.code,
+        req.description,
+        req.reward_name,
+        req.reward_qty,
+        req.reward_icon,
+        req.expires_at,
+        req.source,
+    )
     return {"ok": True, "code": code, "queued_players": queued}
+
+
+class CodeUpdateReq(BaseModel):
+    reward_name: str | None = Field(None, max_length=64)
+    reward_qty: str | None = Field(None, max_length=16)
+    reward_icon: str | None = Field(None, max_length=16)
+    description: str | None = Field(None, max_length=128)
+    expires_at: str | None = Field(None, description="ISO 时间，传空字符串表示清空/永久有效")
+    active: bool | None = Field(None)
+
+
+@app.get("/admin/codes", dependencies=[Depends(require_admin)])
+def admin_list_codes():
+    """管理员查看所有礼包码及元数据（含过期状态）。"""
+    return {"codes": db.list_codes(active_only=False)}
+
+
+@app.put("/admin/codes/{code}", dependencies=[Depends(require_admin)])
+def admin_update_code(code: str, req: CodeUpdateReq):
+    """管理员精确更新礼包码奖励/过期时间/状态。"""
+    payload = req.model_dump(exclude_none=True)
+    row = db.update_code(code, **payload)
+    if not row:
+        raise HTTPException(status_code=404, detail="礼包码不存在")
+    return {"ok": True, "code": row}
+
+
+@app.delete("/admin/codes/{code}", dependencies=[Depends(require_admin)])
+def admin_delete_code(code: str):
+    """管理员删除礼包码及其关联兑换记录。"""
+    ok = db.delete_code(code)
+    if not ok:
+        raise HTTPException(status_code=404, detail="礼包码不存在")
+    return {"ok": True}
 
 
 @app.post("/admin/codes/{code}/deactivate", dependencies=[Depends(require_admin)])

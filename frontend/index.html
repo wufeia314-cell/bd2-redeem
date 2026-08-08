@@ -75,11 +75,35 @@
   .me .st-txt{font-size:12px;color:var(--sub);margin-top:2px}
   .me .exp{font-size:11px;color:var(--accent-d);margin-top:3px}
 
-  /* 礼包码 chips */
-  .codes{display:flex;flex-wrap:wrap;gap:8px}
-  .chip{background:var(--chip);border:1px solid var(--chip-l);color:#8b5a2b;padding:7px 12px;
-        border-radius:22px;font-size:13px;font-family:ui-monospace,Menlo,monospace;display:flex;align-items:center;gap:5px}
-  .chip .src{font-size:11px}
+  /* 礼包码卡片网格 */
+  .codes-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .codes-header h2{margin:0;font-size:15px;font-weight:700}
+  .toggle-expired{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--sub);cursor:pointer}
+  .toggle-expired input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
+  .code-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  @media(min-width:420px){.code-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .code-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:13px 12px 12px;
+             box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px;position:relative}
+  .code-card .meta-top{display:flex;justify-content:space-between;align-items:flex-start;gap:6px}
+  .code-card .dates{display:flex;flex-direction:column;gap:1px}
+  .code-card .upd{font-size:11px;color:var(--txt);font-weight:600}
+  .code-card .exp{font-size:11px;color:var(--sub)}
+  .code-card .status{font-size:11px;font-weight:700;padding:3px 8px;border-radius:10px;white-space:nowrap}
+  .code-card .status.active{background:#e9f7ee;color:var(--ok)}
+  .code-card .status.expired{background:#f0f0f0;color:#999}
+  .code-card .status.inactive{background:#fdeceb;color:var(--err)}
+  .code-card .body{display:flex;align-items:center;gap:10px}
+  .code-card .icon{width:46px;height:46px;border-radius:13px;background:linear-gradient(135deg,var(--chip),var(--chip-l));
+                   display:flex;align-items:center;justify-content:center;flex:0 0 46px}
+  .code-card .icon svg{width:26px;height:26px;fill:var(--accent)}
+  .code-card .reward{flex:1;min-width:0}
+  .code-card .reward-name{font-size:14px;font-weight:700;color:var(--txt);line-height:1.35;word-break:break-all}
+  .code-card .reward-qty{font-size:12px;color:var(--sub);margin-top:2px}
+  .code-card .code-row{display:flex;align-items:center;justify-content:space-between;gap:8px;
+                       background:#faf7f2;border-radius:10px;padding:8px 10px;margin-top:2px}
+  .code-card .code-str{font-family:ui-monospace,Menlo,monospace;font-size:13px;font-weight:600;color:var(--accent);word-break:break-all}
+  .code-card .copy{width:26px;height:26px;border:0;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+  .code-card .copy svg{width:18px;height:18px;fill:#9e9287}
   .empty{color:var(--sub);font-size:13px;padding:6px 0}
 
   /* 记录列表 */
@@ -126,9 +150,15 @@
     <!-- 礼包码面板 -->
     <div class="panel active" id="panel-codes">
       <div class="card">
-        <h2>② 当前生效的礼包码</h2>
-        <p class="desc">系统已收录、正在自动为已绑定玩家兑换的码。🌐 来自社区自动抓取，✍️ 来自管理员手动录入。</p>
-        <div id="codes" class="codes"><span class="empty">加载中…</span></div>
+        <div class="codes-header">
+          <h2>② 当前生效的礼包码</h2>
+          <label class="toggle-expired">
+            <input type="checkbox" id="showExpired" onchange="loadCodes()" />
+            <span>显示过期兑换码</span>
+          </label>
+        </div>
+        <p class="desc">系统已收录的礼包码。来自社区自动抓取或管理员手动录入，显示更新时间、过期时间与奖励内容。</p>
+        <div id="codes"><span class="empty">加载中…</span></div>
       </div>
     </div>
 
@@ -155,7 +185,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const ST_TEXT = {success:"已兑换",already:"已兑换",pending:"排队中",failed:"失败",
+const ST_TEXT = {success:"已兑换",already:"已兑换过",pending:"排队中",failed:"失败",
   invalid:"码无效",expired:"已过期",exceeded:"超上限",unavailable:"不可用",
   bad_user:"UID/昵称错误",error:"失败"};
 
@@ -192,6 +222,33 @@ function fmtDate(iso){
   if(isNaN(d)) return iso;
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
+function fmtMD(iso){
+  if(!iso) return '';
+  const d=new Date(iso);
+  if(isNaN(d)) return '';
+  return `${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function daysLeft(iso){
+  if(!iso) return '永久有效';
+  const exp=new Date(iso);
+  if(isNaN(exp)) return '';
+  const now=new Date();
+  const diff=Math.ceil((exp-now)/(1000*60*60*24));
+  if(diff<0) return '已过期';
+  if(diff===0) return '今天过期';
+  return `${diff}天后过期`;
+}
+
+const ICONS={
+  gift:'<svg viewBox="0 0 24 24"><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7"/><rect x="2" y="7" width="20" height="5" rx="1"/><path d="M12 7a3 3 0 0 1 3-3c1.3 0 2.4.8 2.8 2M12 7a3 3 0 0 0-3-3 3.4 3.4 0 0 0-2.8 2M12 7v13"/></svg>',
+  ticket:'<svg viewBox="0 0 24 24"><path d="M3 9v6a1 1 0 0 0 1 1h1.5a.5.5 0 0 1 .5.5v3a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 1 .5-.5H20a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1h-2V4a1 1 0 0 0-1-1h-1a1 1 0 0 0-1 1v4H8V4a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1v4H4a1 1 0 0 0-1 1z"/></svg>',
+  powder:'<svg viewBox="0 0 24 24"><path d="M9 3h6l2 5-5 13-5-13z"/><circle cx="12" cy="10" r="2"/></svg>',
+  gold:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M7 12h10" stroke="#fff" stroke-width="2"/></svg>',
+  deco:'<svg viewBox="0 0 24 24"><path d="M12 2l2.5 6.5L21 10l-5 4.5L17 21 12 17.5 7 21l1-6.5L3 10l6.5-1.5z"/></svg>',
+  gear:'<svg viewBox="0 0 24 24"><path d="M12 2l2.4 4.9L20 8.2l-3.8 3.7.9 5.4-5.1-2.7-5.1 2.7.9-5.4L4 8.2l5.6-1.3z"/></svg>',
+  exp:'<svg viewBox="0 0 24 24"><path d="M12 2l3.1 6.3L22 9.3l-5 4.9 1.2 6.9L12 16.9l-6.2 4.2 1.2-6.9-5-4.9 6.9-1z"/></svg>'
+};
+const COPY_SVG='<svg viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="14" rx="2"/><path d="M16 7h3a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-3"/></svg>';
 
 function showMe(uid, player){
   document.getElementById('meBox').dataset.uid=uid;
@@ -220,20 +277,53 @@ async function bind(){
   btn.disabled=false;btn.textContent='立即绑定';
 }
 
-async function loadCodes(){
+function copyCode(code){
+  navigator.clipboard.writeText(code).then(()=>toast('已复制 '+code)).catch(()=>toast('复制失败'));
+}
+
+function renderCodes(list, totalPlayers){
   const box=document.getElementById('codes');
   const countBox=document.getElementById('playerCount');
+  countBox.textContent=`已有${(totalPlayers||0).toLocaleString()}人参与`;
+  if(!list.length){box.innerHTML='<span class="empty">暂无兑换码</span>';return;}
+  box.innerHTML=list.map(c=>{
+    const upd=c.updated_at ? `${fmtMD(c.updated_at)}更新` : '近期更新';
+    const exp=daysLeft(c.expires_at);
+    const status=c.status||'active';
+    const statusText={active:'待兑换',expired:'已过期',inactive:'已停用'}[status]||'待兑换';
+    const icon=ICONS[c.reward_icon]||ICONS.gift;
+    const qty=(c.reward_qty||'').replace(/^x?/,'x');
+    const name=c.reward_name||c.description||'未知奖励';
+    return `<div class="code-card">
+      <div class="meta-top">
+        <div class="dates">
+          <span class="upd">${upd}</span>
+          <span class="exp">${exp}</span>
+        </div>
+        <span class="status ${status}">${statusText}</span>
+      </div>
+      <div class="body">
+        <div class="icon">${icon}</div>
+        <div class="reward">
+          <div class="reward-name">${name}</div>
+          ${qty?`<div class="reward-qty">${qty}</div>`:''}
+        </div>
+      </div>
+      <div class="code-row">
+        <span class="code-str">${c.code}</span>
+        <button class="copy" onclick="copyCode('${c.code}')" aria-label="复制">${COPY_SVG}</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function loadCodes(){
+  const box=document.getElementById('codes');
+  const showExpired=document.getElementById('showExpired').checked;
   try{
-    const {ok,data}=await requestJson('/api/codes','GET');
+    const {ok,data}=await requestJson('/api/codes?show_expired='+showExpired,'GET');
     if(!ok){box.innerHTML='<span class="empty">加载失败</span>';return;}
-    const n=data.total_players||0;
-    countBox.textContent=`已有${n.toLocaleString()}人参与`;
-    if(!data.codes.length){box.innerHTML='<span class="empty">暂无生效礼包码</span>';return;}
-    box.innerHTML=data.codes.map(c=>{
-      const src=c.source&&c.source.startsWith('auto')?'🌐':'✍️';
-      return `<span class="chip" title="${(c.description||'')+(c.source?' （来源：'+c.source+'）':'')}">
-                <span class="src">${src}</span>${c.code}</span>`;
-    }).join('');
+    renderCodes(data.codes||[], data.total_players);
   }catch(e){box.innerHTML='<span class="empty">加载失败：'+e.message+'</span>';}
 }
 
