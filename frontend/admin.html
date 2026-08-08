@@ -81,7 +81,7 @@
   <div class="card">
     <h2>🌐 社区兑换码自动抓取</h2>
     <p style="font-size:13px;color:var(--sub);margin:0 0 10px">
-      系统每 <b id="fetchInterval">30</b> 分钟自动从社区源抓取最新礼包码并入库（入库即自动兑换）。
+      系统每 <b id="fetchInterval">每天</b> 自动从社区源抓取最新礼包码并入库（入库即自动兑换）。
       也可点击下方按钮立即执行一次。
     </p>
     <button onclick="runFetch()">立即抓取社区兑换码</button>
@@ -278,7 +278,11 @@ async function loadSources(){
     const r=await fetch('/admin/sources',{headers:H()});
     const d=await r.json();
     const box=document.getElementById('sources');
-    document.getElementById('fetchInterval').textContent=d.fetch_interval_min;
+    const mins=d.fetch_interval_min||0;
+    const label = (mins>=1440 && mins%1440===0) ? `${mins/1440} 天`
+                : (mins>=60 && mins%60===0) ? `${mins/60} 小时`
+                : `${mins} 分钟`;
+    document.getElementById('fetchInterval').textContent=label;
     box.innerHTML='抓取开关：<b>'+(d.fetch_enabled?'开':'关')+'</b><br>抓取源：<br>'+
       (d.sources||[]).map(s=>'· '+s).join('<br>');
   }catch(e){/* 忽略 */}

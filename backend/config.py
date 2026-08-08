@@ -46,8 +46,8 @@ BIND_VALIDITY_DAYS = int(os.getenv("BD2_BIND_VALIDITY_DAYS", "7"))
 # ---- 社区兑换码自动抓取 ----
 # 是否启用后台定时抓取（默认开）。设 0 关闭。
 FETCH_ENABLED = os.getenv("BD2_FETCH_ENABLED", "1") != "0"
-# 抓取间隔（分钟）。默认 30 分钟一轮。
-FETCH_INTERVAL_MIN = float(os.getenv("BD2_FETCH_INTERVAL_MIN", "30"))
+# 抓取间隔（分钟）。默认每天一轮（1440 分钟）。可用 BD2_FETCH_INTERVAL_MIN 覆盖。
+FETCH_INTERVAL_MIN = float(os.getenv("BD2_FETCH_INTERVAL_MIN", "1440"))
 # 抓取源（社区/攻略站的礼包码汇总页）。可用环境变量 BD2_COUPON_SOURCES 覆盖，
 # 格式为 JSON 数组，例如：["https://x.com/a","https://y.com/b"]
 _DEFAULT_SOURCES = [

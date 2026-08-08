@@ -59,6 +59,12 @@ _fetch_thread: threading.Thread | None = None
 
 def _fetch_loop() -> None:
     interval = max(1.0, config.FETCH_INTERVAL_MIN * 60.0)
+    # 服务启动/唤醒后先立即抓一次，不必干等满一个间隔（对会休眠的免费实例尤其友好）
+    if not _fetch_stop.is_set():
+        try:
+            _run_fetch()
+        except Exception as exc:  # noqa: BLE001
+            print(f"[scheduler] 启动抓取异常：{exc}")
     while not _fetch_stop.is_set():
         _fetch_stop.wait(interval)
         if _fetch_stop.is_set():
