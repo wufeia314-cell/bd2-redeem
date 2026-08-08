@@ -80,30 +80,29 @@
   .codes-header h2{margin:0;font-size:15px;font-weight:700}
   .toggle-expired{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--sub);cursor:pointer}
   .toggle-expired input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
-  .code-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-  @media(min-width:420px){.code-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-  .code-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:13px 12px 12px;
-             box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px;position:relative}
-  .code-card .meta-top{display:flex;justify-content:space-between;align-items:flex-start;gap:6px}
-  .code-card .dates{display:flex;flex-direction:column;gap:1px}
-  .code-card .upd{font-size:11px;color:var(--txt);font-weight:600}
-  .code-card .exp{font-size:11px;color:var(--sub)}
-  .code-card .status{font-size:11px;font-weight:700;padding:3px 8px;border-radius:10px;white-space:nowrap}
+  .code-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+  .code-card{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:10px 10px 9px;
+             box-shadow:var(--shadow);display:flex;flex-direction:column;gap:7px;position:relative}
+  .code-card .meta-top{display:flex;justify-content:space-between;align-items:flex-start;gap:5px}
+  .code-card .dates{display:flex;flex-direction:column;gap:0}
+  .code-card .upd{font-size:10.5px;color:var(--txt);font-weight:600}
+  .code-card .exp{font-size:10.5px;color:var(--sub)}
+  .code-card .status{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:9px;white-space:nowrap}
   .code-card .status.active{background:#e9f7ee;color:var(--ok)}
   .code-card .status.expired{background:#f0f0f0;color:#999}
   .code-card .status.inactive{background:#fdeceb;color:var(--err)}
-  .code-card .body{display:flex;align-items:center;gap:10px}
-  .code-card .icon{width:46px;height:46px;border-radius:13px;background:linear-gradient(135deg,var(--chip),var(--chip-l));
-                   display:flex;align-items:center;justify-content:center;flex:0 0 46px}
-  .code-card .icon svg{width:26px;height:26px;fill:var(--accent)}
+  .code-card .body{display:flex;align-items:center;gap:8px}
+  .code-card .icon{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,var(--chip),var(--chip-l));
+                   display:flex;align-items:center;justify-content:center;flex:0 0 38px}
+  .code-card .icon svg{width:21px;height:21px;fill:var(--accent)}
   .code-card .reward{flex:1;min-width:0}
-  .code-card .reward-name{font-size:14px;font-weight:700;color:var(--txt);line-height:1.35;word-break:break-all}
-  .code-card .reward-qty{font-size:12px;color:var(--sub);margin-top:2px}
-  .code-card .code-row{display:flex;align-items:center;justify-content:space-between;gap:8px;
-                       background:#faf7f2;border-radius:10px;padding:8px 10px;margin-top:2px}
-  .code-card .code-str{font-family:ui-monospace,Menlo,monospace;font-size:13px;font-weight:600;color:var(--accent);word-break:break-all}
-  .code-card .copy{width:26px;height:26px;border:0;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
-  .code-card .copy svg{width:18px;height:18px;fill:#9e9287}
+  .code-card .reward-name{font-size:12.5px;font-weight:700;color:var(--txt);line-height:1.3;word-break:break-all}
+  .code-card .reward-qty{font-size:11px;color:var(--sub);margin-top:1px}
+  .code-card .code-row{display:flex;align-items:center;justify-content:space-between;gap:6px;
+                       background:#faf7f2;border-radius:8px;padding:6px 8px;margin-top:1px}
+  .code-card .code-str{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:600;color:var(--accent);word-break:break-all}
+  .code-card .copy{width:24px;height:24px;border:0;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+  .code-card .copy svg{width:16px;height:16px;fill:#9e9287}
   .empty{color:var(--sub);font-size:13px;padding:6px 0}
 
   /* 记录列表 */
@@ -291,9 +290,18 @@ function renderCodes(list, totalPlayers){
     const exp=daysLeft(c.expires_at);
     const status=c.status||'active';
     const statusText={active:'待兑换',expired:'已过期',inactive:'已停用'}[status]||'待兑换';
-    const icon=ICONS[c.reward_icon]||ICONS.gift;
-    const qty=(c.reward_qty||'').replace(/^x?/,'x');
-    const name=c.reward_name||c.description||'未知奖励';
+    // 只有真正抓到/录入了奖励内容才显示图标+奖励区，否则留空（不显示无意义的空图标）
+    const hasReward=!!(c.reward_name || c.description);
+    const rawQty=c.reward_qty||'';
+    const qty=rawQty ? (rawQty.toLowerCase().startsWith('x')?rawQty:'x'+rawQty) : '';
+    const rewardBlock=hasReward?`
+      <div class="body">
+        <div class="icon">${ICONS[c.reward_icon]||ICONS.gift}</div>
+        <div class="reward">
+          <div class="reward-name">${c.reward_name||c.description}</div>
+          ${qty?`<div class="reward-qty">${qty}</div>`:''}
+        </div>
+      </div>`:'';
     return `<div class="code-card">
       <div class="meta-top">
         <div class="dates">
@@ -302,13 +310,7 @@ function renderCodes(list, totalPlayers){
         </div>
         <span class="status ${status}">${statusText}</span>
       </div>
-      <div class="body">
-        <div class="icon">${icon}</div>
-        <div class="reward">
-          <div class="reward-name">${name}</div>
-          ${qty?`<div class="reward-qty">${qty}</div>`:''}
-        </div>
-      </div>
+      ${rewardBlock}
       <div class="code-row">
         <span class="code-str">${c.code}</span>
         <button class="copy" onclick="copyCode('${c.code}')" aria-label="复制">${COPY_SVG}</button>
