@@ -341,8 +341,16 @@ def list_codes(active_only: bool = False, include_expired: bool = True) -> list[
 
 # ---------------- 兑换记录 ----------------
 def enqueue_redemptions_for_code(code_id: int) -> int:
-    """为某礼包码，给所有在有效期内的激活玩家创建 pending 记录。返回新建条数。"""
+    """为某礼包码，给所有在有效期内的激活玩家创建 pending 记录。跳过已过期/停用的码。返回新建条数。"""
     with _lock, get_conn() as conn:
+        # 码必须处于激活且未过期状态才入队，过期码不再额外排队
+        code_ok = conn.execute(
+            "SELECT 1 FROM codes WHERE id=? AND active=1 "
+            "AND (expires_at IS NULL OR expires_at > datetime('now'))",
+            (code_id,),
+        ).fetchone()
+        if not code_ok:
+            return 0
         players = conn.execute(
             "SELECT id FROM players WHERE active=1 AND expires_at > datetime('now')"
         ).fetchall()
@@ -367,7 +375,10 @@ def enqueue_all_codes_for_player(player_id: int) -> int:
         ).fetchone()
         if not player:
             return 0
-        codes = conn.execute("SELECT id FROM codes WHERE active=1").fetchall()
+        codes = conn.execute(
+            "SELECT id FROM codes WHERE active=1 "
+            "AND (expires_at IS NULL OR expires_at > datetime('now'))"
+        ).fetchall()
         n = 0
         for c in codes:
             cur = conn.execute(
@@ -379,8 +390,27 @@ def enqueue_all_codes_for_player(player_id: int) -> int:
         return n
 
 
+def expire_stale_pending() -> int:
+    """把已过期礼包码对应的仍处于 pending 的历史任务标记为 expired，避免无谓排队兑换。返回清理条数。"""
+    with _lock, get_conn() as conn:
+        cur = conn.execute(
+            """
+            UPDATE redemptions SET status='expired', message='礼包码已过期，已取消兑换', updated_at=?
+            WHERE status='pending'
+              AND code_id IN (
+                  SELECT id FROM codes
+                  WHERE active=1
+                    AND expires_at IS NOT NULL
+                    AND expires_at <= datetime('now')
+              )
+            """,
+            (_now(),),
+        )
+        return cur.rowcount
+
+
 def get_pending_jobs() -> list[dict]:
-    """取出所有待处理任务，联表带出 UID、昵称与码。过滤过期玩家。"""
+    """取出所有待处理任务，联表带出 UID、昵称与码。过滤过期玩家与过期码。"""
     with get_conn() as conn:
         rows = conn.execute(
             """
@@ -393,6 +423,7 @@ def get_pending_jobs() -> list[dict]:
               AND p.active = 1
               AND p.expires_at > datetime('now')
               AND c.active = 1
+              AND (c.expires_at IS NULL OR c.expires_at > datetime('now'))
             ORDER BY r.id
             """
         ).fetchall()

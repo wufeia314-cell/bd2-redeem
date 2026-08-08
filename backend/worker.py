@@ -30,6 +30,14 @@ def _run_loop() -> None:
     # 复用连接，减少握手开销
     with httpx.Client(timeout=config.REQUEST_TIMEOUT) as client:
         while not _stop.is_set():
+            # 每轮先把已过期码对应的残留 pending 标记掉，避免无谓排队兑换
+            try:
+                cleared = db.expire_stale_pending()
+                if cleared:
+                    print(f"[worker] 已清理 {cleared} 条过期码残留任务")
+            except Exception as exc:  # noqa: BLE001
+                print(f"[worker] expire_stale_pending 出错: {exc}")
+
             jobs = db.get_pending_jobs()
             if not jobs:
                 _stop.wait(3.0)  # 空闲时轻量轮询
