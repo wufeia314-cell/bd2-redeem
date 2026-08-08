@@ -313,6 +313,7 @@ def extract_codes(html_text: str, source_url: str = "") -> list[dict]:
                 "reward_qty": reward["reward_qty"],
                 "reward_icon": reward["reward_icon"],
                 "expires_at": expires_at,
+                "published_at": "",  # 英文站无法稳定获得「上线时间」，留空 → 前端隐藏该项
                 "updated_at": datetime.now().date().isoformat(),
             }
 
@@ -420,7 +421,8 @@ def fetch_gamekee_codes(
                     "reward_qty": "",
                     "reward_icon": _map_gamekee_icon(content, it.get("type", 0) or 0),
                     "expires_at": expires_at,
-                    "updated_at": updated,
+                    "published_at": updated,  # GameKee 的 created_at 即码上线/录入时间
+                    "updated_at": updated,    # 内部排序用，不对外展示
                 }
             )
         if len(items) < 50:
@@ -467,6 +469,7 @@ def fetch_all(sources: list[str] | None = None) -> dict:
         per_source[_host_of(url)] = len(codes)
         for c in codes:
             c.setdefault("source", "auto:community")
+            c.setdefault("published_at", "")
             merged.setdefault(c["code"], c)
 
     return {

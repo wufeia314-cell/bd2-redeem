@@ -89,6 +89,7 @@ def _run_fetch() -> dict:
                 c.get("reward_icon", ""),
                 c.get("expires_at"),
                 source=c.get("source") or "auto:community",
+                published_at=c.get("published_at"),
             )
             # 新入库：created_at == updated_at 说明是本次插入的新行；
             # queued>0 说明有玩家被排入兑换队列（兼容 players 非空的情况）

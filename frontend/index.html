@@ -194,7 +194,7 @@
             <span>显示过期兑换码</span>
           </label>
         </div>
-        <p class="desc">系统已收录的礼包码。来自社区自动抓取或管理员手动录入，显示更新时间、过期时间与奖励内容。</p>
+        <p class="desc">系统已收录的礼包码。来自社区自动抓取或管理员手动录入，显示上线时间、过期时间与奖励内容。</p>
         <div id="codes"><span class="empty">加载中…</span></div>
       </div>
     </div>
@@ -266,7 +266,7 @@ function fmtMD(iso){
   return `${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 function daysLeft(iso){
-  if(!iso) return '长期有效(待官方验证)';
+  if(!iso) return '长期有效';
   const exp=new Date(iso);
   if(isNaN(exp)) return '';
   const now=new Date();
@@ -361,7 +361,8 @@ function renderCodes(list, totalPlayers){
   // 稳定分区：待官方验证且非中文的码沉到最底部，其余保持原排序（最近更新在前）
   const ordered=list.slice().sort((a,b)=>(_isBottomCode(a)?1:0)-(_isBottomCode(b)?1:0));
   box.innerHTML=ordered.map(c=>{
-    const upd=c.updated_at ? `${fmtMD(c.updated_at)}更新` : '近期更新';
+    // 上线时间：优先展示「码上线时间」；来源无法提供上线时间时留空 → 不展示该项
+    const upd=c.published_at ? `${fmtMD(c.published_at)}上线` : '';
     // 优先采用官方实测状态：一旦 worker 核实码已过期/无效等，显示真实状态
     const off=c.official_status||'pending';
     const DEAD={expired:'已过期',invalid:'已失效',exceeded:'已达上限',unavailable:'暂不可用'};
@@ -385,7 +386,7 @@ function renderCodes(list, totalPlayers){
     return `<div class="code-card${DEAD[off]?' dead':''}">
       <div class="meta-top">
         <div class="dates">
-          <span class="upd">${upd}</span>
+          ${upd?`<span class="upd">${upd}</span>`:''}
           <span class="exp">${exp}</span>
         </div>
         <span class="status ${statusCls}">${statusText}</span>

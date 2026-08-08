@@ -153,6 +153,14 @@ def init_db() -> None:
             )
         except Exception:
             pass
+        # codes 表补充「码上线时间」列：填的是官方/源站公布上线的时间，而非抓取时间；
+        # 来源无法提供上线时间时留空，前端据此隐藏该项。
+        try:
+            conn.execute(
+                "ALTER TABLE codes ADD COLUMN published_at TEXT DEFAULT ''"
+            )
+        except Exception:
+            pass
 
 
 # ---------------- 玩家 ----------------
@@ -225,6 +233,7 @@ def add_code(
     reward_icon: str = "",
     expires_at: str | None = None,
     source: str = "manual",
+    published_at: str | None = None,
 ) -> dict:
     code = code.strip().upper()
     if not code:
@@ -234,12 +243,13 @@ def add_code(
         cur = conn.execute(
             """
             INSERT INTO codes(code, description, reward_name, reward_qty, reward_icon,
-                              expires_at, updated_at, active, source, created_at)
-            VALUES(?,?,?,?,?,?,?,?,?,?)
+                              expires_at, published_at, updated_at, active, source, created_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(code) DO UPDATE SET
                 active=1,
                 source=excluded.source,
                 updated_at=excluded.updated_at,
+                published_at=COALESCE(NULLIF(excluded.published_at,''), codes.published_at),
                 expires_at=COALESCE(excluded.expires_at, codes.expires_at),
                 description=COALESCE(NULLIF(excluded.description,''), codes.description),
                 reward_name=COALESCE(NULLIF(excluded.reward_name,''), codes.reward_name),
@@ -254,6 +264,7 @@ def add_code(
                 reward_qty.strip(),
                 reward_icon.strip(),
                 expires_at,
+                published_at,
                 now,
                 1,
                 source,
@@ -271,9 +282,10 @@ def add_code_and_enqueue(
     reward_icon: str = "",
     expires_at: str | None = None,
     source: str = "manual",
+    published_at: str | None = None,
 ) -> tuple[dict, int]:
     """录入礼包码并立即为所有在有效期内玩家生成 pending 任务。返回 (code行, 新建任务数)。"""
-    row = add_code(code, description, reward_name, reward_qty, reward_icon, expires_at, source)
+    row = add_code(code, description, reward_name, reward_qty, reward_icon, expires_at, source, published_at)
     queued = enqueue_redemptions_for_code(row["id"])
     return row, queued
 
