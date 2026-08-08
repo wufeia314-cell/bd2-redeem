@@ -48,13 +48,21 @@ BIND_VALIDITY_DAYS = int(os.getenv("BD2_BIND_VALIDITY_DAYS", "7"))
 FETCH_ENABLED = os.getenv("BD2_FETCH_ENABLED", "1") != "0"
 # 抓取间隔（分钟）。默认每天一轮（1440 分钟）。可用 BD2_FETCH_INTERVAL_MIN 覆盖。
 FETCH_INTERVAL_MIN = float(os.getenv("BD2_FETCH_INTERVAL_MIN", "1440"))
-# 抓取源（社区/攻略站的礼包码汇总页）。可用环境变量 BD2_COUPON_SOURCES 覆盖，
-# 格式为 JSON 数组，例如：["https://x.com/a","https://y.com/b"]
+
+# ---- GameKee 棕色尘埃2 Wiki 兑换码接口（优先源）----
+# GameKee 的码由 Wiki 编辑从 BD2 官方渠道维护，是 BD2 最权威的中文源，
+# 自带准确的中文奖励描述与精确过期时间戳。接口逆向自其 SPA：
+#   GET https://www.gamekee.com/v1/game/cdk/queryByServerIdPageList
+#   必须带请求头 game-alias（拦截器自动注入），参数 server_id / state(2=有效) / 分页。
+GAMEKEE_GAME_ALIAS = os.getenv("BD2_GAMEKEE_ALIAS", "zsca2")
+GAMEKEE_CDK_SERVER_ID = int(os.getenv("BD2_GAMEKEE_SERVER_ID", "12"))
+GAMEKEE_FETCH_ENABLED = os.getenv("BD2_GAMEKEE_FETCH_ENABLED", "1") != "0"
+
+# 抓取源（社区/攻略站的礼包码汇总页，作为 GameKee 的补充/冗余）。
+# 可用环境变量 BD2_COUPON_SOURCES 覆盖，格式为 JSON 数组。
 _DEFAULT_SOURCES = [
     "https://ucngame.com/codes/brown-dust-2-codes/",
     "https://mobi.gg/en/tips/brown-dust-2-gift-codes",
-    # GameKee 棕色尘埃2 Wiki 兑换码页（重 SPA，静态抓取可能为空，留作扩展）：
-    # "https://www.gamekee.com/twhj/601290.html",
 ]
 _env_sources = os.getenv("BD2_COUPON_SOURCES")
 if _env_sources:

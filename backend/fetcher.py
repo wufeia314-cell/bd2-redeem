@@ -331,6 +331,104 @@ def _host_of(url: str) -> str:
         return url
 
 
+# ---------------- GameKee 棕色尘埃2 Wiki 兑换码接口（优先源）----------------
+# 逆向自其 SPA：码表走后端接口而非 HTML，需带 game-alias 请求头。
+# state=2 为当前有效码；state=1 为失效/过期码（不抓取，避免污染有效列表）。
+GAMEKEE_API = "https://www.gamekee.com/v1/game/cdk/queryByServerIdPageList"
+
+
+def _map_gamekee_icon(content: str, ctype: int) -> str:
+    """根据 GameKee 的奖励描述与类型枚举映射到前端图标关键字。"""
+    c = content or ""
+    if re.search(r"抽|招募|ticket|draw|recruit", c, re.I):
+        return "ticket"
+    if re.search(r"粉|精炼|powder|refining", c, re.I):
+        return "powder"
+    if re.search(r"钻|dia|diamond|宝石|jewel", c, re.I):
+        return "gold"
+    if re.search(r"装饰|deco|deko", c, re.I):
+        return "deco"
+    if re.search(r"装备|equipment|手", c, re.I):
+        return "gear"
+    # 类型枚举兜底：1=钻 2=抽 3=招募券 4=装饰/装备 5=粉
+    return {1: "gold", 2: "ticket", 3: "ticket", 4: "deco", 5: "powder"}.get(ctype, "gift")
+
+
+def fetch_gamekee_codes(
+    alias: str | None = None, server_id: int | None = None
+) -> list[dict]:
+    """从 GameKee Wiki 接口抓取当前有效兑换码（含中文奖励与精确过期）。
+
+    返回与 extract_codes 相同结构的 dict 列表（code/description/reward_name/
+    reward_qty/reward_icon/expires_at/updated_at）。失败返回空列表。
+    """
+    alias = alias or config.GAMEKEE_GAME_ALIAS
+    server_id = server_id or config.GAMEKEE_CDK_SERVER_ID
+    headers = {
+        "User-Agent": config.USER_AGENT,
+        "X-Requested-With": "XMLHttpRequest",
+        "Accept": "application/json",
+        "game-alias": alias,
+        "device-num": "1",
+        "Lang": "zh-cn",
+    }
+    out: list[dict] = []
+    page = 1
+    while True:
+        try:
+            with httpx.Client(timeout=config.REQUEST_TIMEOUT, headers=headers) as client:
+                resp = client.get(
+                    GAMEKEE_API,
+                    params={
+                        "server_id": server_id,
+                        "state": 2,  # 当前有效
+                        "page_no": page,
+                        "page_size": 50,
+                    },
+                )
+                resp.raise_for_status()
+                payload = resp.json()
+        except Exception as exc:  # noqa: BLE001
+            print(f"[fetcher] GameKee 抓取失败: {exc}")
+            break
+        if payload.get("code") != 0 or not payload.get("data"):
+            # code!=0（如缺少游戏信息）或空页，停止翻页
+            break
+        items = payload["data"]
+        for it in items:
+            code = (it.get("code") or "").strip().upper()
+            if not code:
+                continue
+            end_at = it.get("end_at") or 0
+            expires_at = (
+                datetime.utcfromtimestamp(end_at).date().isoformat()
+                if end_at and end_at > 0
+                else None
+            )
+            content = (it.get("content") or "").strip()
+            created = it.get("created_at") or 0
+            updated = (
+                datetime.utcfromtimestamp(created).date().isoformat()
+                if created
+                else datetime.now().date().isoformat()
+            )
+            out.append(
+                {
+                    "code": code,
+                    "description": content,
+                    "reward_name": content,
+                    "reward_qty": "",
+                    "reward_icon": _map_gamekee_icon(content, it.get("type", 0) or 0),
+                    "expires_at": expires_at,
+                    "updated_at": updated,
+                }
+            )
+        if len(items) < 50:
+            break
+        page += 1
+    return out
+
+
 def fetch_source(url: str, timeout: float | None = None) -> list[dict]:
     """抓取单个源并提取候选码。失败返回空列表（不中断其它源）。"""
     timeout = timeout or config.REQUEST_TIMEOUT
@@ -347,15 +445,28 @@ def fetch_source(url: str, timeout: float | None = None) -> list[dict]:
 
 
 def fetch_all(sources: list[str] | None = None) -> dict:
-    """抓取所有配置源，合并去重。返回统计。"""
+    """抓取所有配置源，合并去重。返回统计。
+
+    GameKee 接口作为优先源先合并（中文奖励/过期更准确），其余 HTML 源补充去重。
+    """
     sources = sources or config.COUPON_SOURCES
     merged: dict[str, dict] = {}
     per_source: dict[str, int] = {}
+
+    # 1) GameKee 优先（若启用）
+    if config.GAMEKEE_FETCH_ENABLED:
+        gk = fetch_gamekee_codes()
+        per_source["gamekee.com(zsca2)"] = len(gk)
+        for c in gk:
+            merged[c["code"]] = c  # 先入为主，后续源不覆盖
+
+    # 2) 其它 HTML 社区源补充
     for url in sources:
         codes = fetch_source(url)
         per_source[_host_of(url)] = len(codes)
         for c in codes:
             merged.setdefault(c["code"], c)
+
     return {
         "fetched_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "sources": per_source,
