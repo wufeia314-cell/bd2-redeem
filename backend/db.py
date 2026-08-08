@@ -284,39 +284,65 @@ def add_code(
     if not code:
         raise ValueError("礼包码不能为空")
     now = _now()
+    d_desc = description.strip()
+    d_rname = reward_name.strip()
+    d_qty = reward_qty.strip()
+    d_icon = reward_icon.strip()
     with _lock, get_conn() as conn:
-        cur = conn.execute(
+        existing = conn.execute("SELECT * FROM codes WHERE code=?", (code,)).fetchone()
+        if existing:
+            # 内容无变化时跳过更新，保留原有 updated_at —— 否则每次抓取都把全部码刷成
+            # 「最新」，会让列表的「最近更新在前」排序语义失效。
+            content_same = (
+                (existing["reward_name"] or "") == d_rname
+                and (existing["reward_qty"] or "") == d_qty
+                and (existing["reward_icon"] or "") == d_icon
+                and (existing["description"] or "") == d_desc
+                and (existing["expires_at"] or None) == (expires_at or None)
+                and (existing["published_at"] or "") == (published_at or "")
+                and (existing["source"] or "") == source
+                and existing["active"] == 1
+            )
+            if content_same:
+                return _enrich_code(existing)
+            conn.execute(
+                """
+                UPDATE codes SET
+                    active=1,
+                    source=?,
+                    updated_at=?,
+                    published_at=COALESCE(NULLIF(?,''), published_at),
+                    expires_at=COALESCE(?, expires_at),
+                    description=COALESCE(NULLIF(?,''), description),
+                    reward_name=COALESCE(NULLIF(?,''), reward_name),
+                    reward_qty= COALESCE(NULLIF(?,''),  reward_qty),
+                    reward_icon=COALESCE(NULLIF(?,''), reward_icon)
+                WHERE code=?
+                """,
+                (
+                    source, now,
+                    published_at or "", expires_at,
+                    d_desc, d_rname, d_qty, d_icon,
+                    code,
+                ),
+            )
+            row = conn.execute("SELECT * FROM codes WHERE code=?", (code,)).fetchone()
+            return _enrich_code(row)
+        conn.execute(
             """
             INSERT INTO codes(code, description, reward_name, reward_qty, reward_icon,
                               expires_at, published_at, updated_at, active, source, created_at)
             VALUES(?,?,?,?,?,?,?,?,?,?,?)
-            ON CONFLICT(code) DO UPDATE SET
-                active=1,
-                source=excluded.source,
-                updated_at=excluded.updated_at,
-                published_at=COALESCE(NULLIF(excluded.published_at,''), codes.published_at),
-                expires_at=COALESCE(excluded.expires_at, codes.expires_at),
-                description=COALESCE(NULLIF(excluded.description,''), codes.description),
-                reward_name=COALESCE(NULLIF(excluded.reward_name,''), codes.reward_name),
-                reward_qty= COALESCE(NULLIF(excluded.reward_qty,''),  codes.reward_qty),
-                reward_icon=COALESCE(NULLIF(excluded.reward_icon,''), codes.reward_icon)
-            RETURNING *
             """,
             (
-                code,
-                description.strip(),
-                reward_name.strip(),
-                reward_qty.strip(),
-                reward_icon.strip(),
-                expires_at,
-                published_at,
-                now,
-                1,
-                source,
-                now,
+                code, d_desc, d_rname, d_qty, d_icon,
+                expires_at, published_at, now, 1, source, now,
             ),
         )
-        return _enrich_code(cur.fetchone())
+        # 注意：带 ALTER 追加列的表上用 INSERT ... RETURNING * 在本环境取不到行，
+        # 故插入后显式 SELECT（与 UPDATE 分支一致），更稳妥。
+        row = conn.execute("SELECT * FROM codes WHERE code=?", (code,)).fetchone()
+        return _enrich_code(row)
 
 
 def add_code_and_enqueue(
@@ -343,6 +369,7 @@ def update_code(
     description: str | None = None,
     expires_at: str | None = None,
     active: bool | None = None,
+    official_status: str | None = None,
 ) -> dict | None:
     """管理员精确更新某个礼包码的元数据（空字符串可清空字段）。"""
     code = code.strip().upper()
@@ -359,6 +386,9 @@ def update_code(
         fields.append(("expires_at", expires_at if expires_at.strip() else None))
     if active is not None:
         fields.append(("active", 1 if active else 0))
+    # 管理员可把被误标的码重置回 'pending'（重新参与兑换），或手动置为 valid/expired 等
+    if official_status is not None:
+        fields.append(("official_status", official_status.strip()))
     if not fields:
         with get_conn() as conn:
             row = conn.execute("SELECT * FROM codes WHERE code=?", (code,)).fetchone()
@@ -418,12 +448,13 @@ def list_codes(active_only: bool = False, include_expired: bool = True) -> list[
 
 # ---------------- 兑换记录 ----------------
 def enqueue_redemptions_for_code(code_id: int) -> int:
-    """为某礼包码，给所有在有效期内的激活玩家创建 pending 记录。跳过已过期/停用的码。返回新建条数。"""
+    """为某礼包码，给所有在有效期内的激活玩家创建 pending 记录。跳过已过期/停用/官方已判失效的码。返回新建条数。"""
     with _lock, get_conn() as conn:
-        # 码必须处于激活且未过期状态才入队，过期码不再额外排队
+        # 码必须处于激活、未过期、且官方状态未被判为失效，才入队
         code_ok = conn.execute(
             "SELECT 1 FROM codes WHERE id=? AND active=1 "
-            "AND (expires_at IS NULL OR expires_at > datetime('now'))",
+            "AND (expires_at IS NULL OR expires_at > datetime('now')) "
+            "AND (official_status IS NULL OR official_status IN ('pending','valid'))",
             (code_id,),
         ).fetchone()
         if not code_ok:
@@ -454,7 +485,8 @@ def enqueue_all_codes_for_player(player_id: int) -> int:
             return 0
         codes = conn.execute(
             "SELECT id FROM codes WHERE active=1 "
-            "AND (expires_at IS NULL OR expires_at > datetime('now'))"
+            "AND (expires_at IS NULL OR expires_at > datetime('now')) "
+            "AND (official_status IS NULL OR official_status IN ('pending','valid'))"
         ).fetchall()
         n = 0
         for c in codes:
@@ -468,17 +500,21 @@ def enqueue_all_codes_for_player(player_id: int) -> int:
 
 
 def expire_stale_pending() -> int:
-    """把已过期礼包码对应的仍处于 pending 的历史任务标记为 expired，避免无谓排队兑换。返回清理条数。"""
+    """把已无法兑换的礼包码对应的残留 pending 任务标记为 expired，避免无谓排队/堆积。
+    无法兑换的情形：① 已过期；② 已被官方实测判为失效(invalid/expired/exceeded/unavailable)。
+    返回清理条数。"""
     with _lock, get_conn() as conn:
         cur = conn.execute(
             """
-            UPDATE redemptions SET status='expired', message='礼包码已过期，已取消兑换', updated_at=?
+            UPDATE redemptions SET status='expired', message='礼包码已失效/过期，已取消兑换', updated_at=?
             WHERE status='pending'
               AND code_id IN (
                   SELECT id FROM codes
                   WHERE active=1
-                    AND expires_at IS NOT NULL
-                    AND expires_at <= datetime('now')
+                    AND (
+                      (expires_at IS NOT NULL AND expires_at <= datetime('now'))
+                      OR official_status IN ('expired','invalid','exceeded','unavailable')
+                    )
               )
             """,
             (_now(),),

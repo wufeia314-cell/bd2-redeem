@@ -63,6 +63,10 @@
                   box-shadow:0 4px 12px rgba(154,94,44,.32);transition:transform .12s,box-shadow .2s,opacity .2s}
   .bindbar button:active{transform:scale(.96);box-shadow:0 2px 7px rgba(154,94,44,.28)}
   .bindbar button:disabled{opacity:.55}
+  /* 昵称输入（官方自动兑换必填） */
+  .nick-input{display:block;width:calc(100% - 32px);margin:10px 16px 0;border:1px solid var(--line);
+              border-radius:12px;padding:11px 14px;font-size:14px;outline:none;background:#fff;color:var(--txt);box-sizing:border-box}
+  .nick-input::placeholder{color:#c2b8ac}
 
   /* ===== 分段 tab ===== */
   .tabs{position:sticky;top:0;z-index:20;display:flex;background:rgba(255,255,255,.92);
@@ -195,6 +199,7 @@
     <span class="count" id="playerCount">已有人参与</span>
     <button id="bindBtn" onclick="bind()">立即绑定</button>
   </div>
+  <input id="nickname" maxlength="24" placeholder="游戏昵称（自动兑换必填）" autocomplete="off" class="nick-input" />
   <div class="uid-tip" onclick="openUidTip()"><span>如何获取游戏内UID？</span></div>
 
   <div class="tabs">
@@ -305,7 +310,11 @@ function fmtMD(iso){
 }
 function daysLeft(iso){
   if(!iso) return '长期有效';
-  const exp=new Date(iso);
+  // 官方/源站给的是 UTC 日期（形如 2026-08-31）。仅含日期时按 UTC 零点解析，
+  // 避免用本地时区解析导致边界差一天。
+  let exp;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(iso)) exp=new Date(iso+'T00:00:00Z');
+  else exp=new Date(iso);
   if(isNaN(exp)) return '';
   const now=new Date();
   const diff=Math.ceil((exp-now)/(1000*60*60*24));
@@ -351,11 +360,12 @@ function showMe(uid, player){
 
 async function bind(){
   const uid=document.getElementById('uid').value.trim();
+  const nickname=document.getElementById('nickname').value.trim();
   const btn=document.getElementById('bindBtn');
   if(!uid){toast('请输入游戏内UID');return;}
   btn.disabled=true;btn.textContent='绑定中…';
   try{
-    const {ok,data}=await requestJson('/api/bind','POST',{uid});
+    const {ok,data}=await requestJson('/api/bind','POST',{uid, nickname});
     if(ok){
       showMe(uid, data.player);
       toast(`绑定成功！已排入 ${data.queued_history_codes??0} 个历史礼包码`);

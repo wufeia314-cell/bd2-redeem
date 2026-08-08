@@ -39,7 +39,17 @@ _bind_hits: dict[str, list[float]] = {}
 _bind_lock = threading.Lock()
 
 
-def _bind_allowed(ip: str) -> bool:
+def _client_ip(request: Request) -> str:
+    # 部署在反代/负载均衡（如 Render、Nginx）之后时，request.client.host 是内网地址，
+    # 所有用户会被误判为同一 IP。优先取 X-Forwarded-For 的第一个真实地址。
+    fwd = request.headers.get("X-Forwarded-For", "")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _bind_allowed(request: Request) -> bool:
+    ip = _client_ip(request)
     now = time.monotonic()
     with _bind_lock:
         hits = _bind_hits.get(ip, [])
@@ -184,7 +194,7 @@ def require_admin(x_admin_token: str = Header(default="")) -> None:
 def bind(req: BindReq, request: Request):
     """玩家用 UID 绑定。绑定后自动为其补齐所有历史激活礼包码，有效期 14 天。"""
     ip = request.client.host if request.client else "unknown"
-    if not _bind_allowed(ip):
+    if not _bind_allowed(request):
         raise HTTPException(status_code=429, detail="绑定过于频繁，请稍后再试")
     player = db.add_player(req.uid, req.nickname, req.note)
     queued = db.enqueue_all_codes_for_player(player["id"])
@@ -228,6 +238,7 @@ class CodeUpdateReq(BaseModel):
     description: str | None = Field(None, max_length=128)
     expires_at: str | None = Field(None, description="ISO 时间，传空字符串表示清空/永久有效")
     active: bool | None = Field(None)
+    official_status: str | None = Field(None, description="重置官方状态：pending/valid/expired/invalid 等；置 pending 可让失效码重新参与兑换")
 
 
 @app.get("/admin/codes", dependencies=[Depends(require_admin)])
