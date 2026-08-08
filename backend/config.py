@@ -36,7 +36,8 @@ ADMIN_TOKEN = os.getenv("BD2_ADMIN_TOKEN", "change-me-admin-token")
 # 默认 0.0.0.0：监听所有网卡，同局域网/部署后公网都可访问。
 # 仅本机调试时可设为 127.0.0.1。
 HOST = os.getenv("BD2_HOST", "0.0.0.0")
-PORT = int(os.getenv("BD2_PORT", "8000"))
+# 优先读云平台注入的 PORT（Render/Heroku 标准），回退 BD2_PORT，再回退 8000
+PORT = int(os.getenv("PORT", os.getenv("BD2_PORT", "8000")))
 
 # ---- 社区兑换码自动抓取 ----
 # 是否启用后台定时抓取（默认开）。设 0 关闭。
