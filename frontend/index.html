@@ -160,6 +160,24 @@
         z-index:50;opacity:0;transition:.25s;pointer-events:none;max-width:86%;text-align:center;
         box-shadow:0 6px 20px rgba(0,0,0,.2)}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  /* 如何获取 UID 引导 */
+  .uid-tip{display:flex;justify-content:center;margin:10px 0 4px;font-size:12.5px;color:var(--accent);cursor:pointer}
+  .uid-tip span{border-bottom:1px dashed currentColor;opacity:.95}
+  .uid-tip span:hover{opacity:1}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:60;padding:16px;overflow:auto}
+  .modal.show{display:flex}
+  .modal-content{position:relative;background:#fff;border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,.35);max-width:680px;width:100%;padding:20px;text-align:center;animation:pop .22s ease-out}
+  @keyframes pop{from{opacity:0;transform:scale(.92)} to{opacity:1;transform:scale(1)}}
+  .modal-content h3{margin:0 0 12px;font-size:17px;color:#4a3b2a}
+  .modal-content img{max-width:100%;border-radius:12px;display:block}
+  .modal-caption{margin-top:12px;font-size:13px;color:var(--sub);line-height:1.7}
+  .modal-close{position:absolute;right:14px;top:10px;background:none;border:none;font-size:24px;color:#888;cursor:pointer;line-height:1}
+  .modal-close:hover{color:#333}
+  @media(max-width:640px){
+    .modal-content{padding:14px;border-radius:14px}
+    .modal-content h3{font-size:15px}
+  }
 </style>
 </head>
 <body>
@@ -177,6 +195,7 @@
     <span class="count" id="playerCount">已有人参与</span>
     <button id="bindBtn" onclick="bind()">立即绑定</button>
   </div>
+  <div class="uid-tip" onclick="openUidTip()"><span>如何获取游戏内UID？</span></div>
 
   <div class="tabs">
     <div class="tab active" data-tab="codes" onclick="switchTab('codes')">礼包码</div>
@@ -219,6 +238,15 @@
   </div>
 </div>
 
+<div id="uidTipModal" class="modal" onclick="closeUidTip(event)">
+  <div class="modal-content" onclick="event.stopPropagation()">
+    <button class="modal-close" onclick="closeUidTip(event)">×</button>
+    <h3>游戏内 UID 获取教程</h3>
+    <img src="/static/assets/bind-tips.png" alt="游戏内UID获取教程" />
+    <p class="modal-caption">1. 点击游戏主界面昵称旁的 + 号；2. 在弹出的资料卡里点击「复制UID」。</p>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -229,6 +257,16 @@ const ST_TEXT = {success:"已兑换",already:"已兑换过",pending:"排队中",
 function toast(msg){
   const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
   clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);
+}
+function openUidTip(){
+  document.getElementById('uidTipModal').classList.add('show');
+  document.body.style.overflow='hidden';
+}
+function closeUidTip(e){
+  // 只有点遮罩或关闭按钮时才关；点内容区不关
+  if(e && e.target!==document.getElementById('uidTipModal') && !e.target.classList.contains('modal-close')) return;
+  document.getElementById('uidTipModal').classList.remove('show');
+  document.body.style.overflow='';
 }
 function switchTab(name){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
