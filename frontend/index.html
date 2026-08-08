@@ -313,7 +313,27 @@ async function bind(){
 }
 
 function copyCode(code){
-  navigator.clipboard.writeText(code).then(()=>toast('已复制 '+code)).catch(()=>toast('复制失败'));
+  const ok = (text)=>toast('已复制 '+text);
+  const fail = ()=>toast('复制失败，请长按手动复制');
+  // 优先用现代 Clipboard API（需要安全上下文 + 用户手势）
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(code).then(()=>ok(code)).catch(()=>fallbackCopy(code, ok, fail));
+  } else {
+    fallbackCopy(code, ok, fail);
+  }
+}
+// 老浏览器 / 非 HTTPS / 部分移动端 的兜底方案
+function fallbackCopy(text, ok, fail){
+  try{
+    const ta=document.createElement('textarea');
+    ta.value=text;
+    ta.style.cssText='position:fixed;top:-9999px;opacity:0';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    const done=document.execCommand('copy');
+    document.body.removeChild(ta);
+    done?ok(text):fail();
+  }catch(e){ fail(); }
 }
 
 function renderCodes(list, totalPlayers){
