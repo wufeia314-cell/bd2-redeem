@@ -1,6 +1,6 @@
 # 棕色尘埃2（BrownDust2）礼包码自动兑换系统
 
-仿 GameKee Wiki 的礼包码托管：**玩家用 UID 绑定一次，管理员之后每录入一个新码，系统就自动帮所有有效期内玩家兑换**，奖励直接发到游戏邮箱。
+仿 GameKee Wiki 的礼包码托管：**玩家用游戏昵称绑定一次，管理员之后每录入一个新码，系统就自动帮所有有效期内玩家兑换**，奖励直接发到游戏邮箱。
 
 底层直接调用官方公开兑换接口（纯 HTTP，不开浏览器、不模拟点击），高效稳定，适合部署在服务器定时/常驻运行。
 
@@ -14,11 +14,11 @@
 |---|---|
 | 接口 URL | `POST https://loj2urwaua.execute-api.ap-northeast-1.amazonaws.com/prod/coupon` |
 | 请求头 | `Content-Type: application/json`（建议带浏览器 UA + Origin/Referer） |
-| 请求体 | `{"appId":"bd2-live","userId":"<游戏昵称/UID>","code":"<礼包码>"}` |
+| 请求体 | `{"appId":"bd2-live","userId":"<游戏昵称>","code":"<礼包码>"}` |
 | 成功返回 | `{"success": true, ...}` |
 | 失败返回 | `{"error":"<错误码>", ...}` |
 
-**要点：BD2 全球兑换接口只需「userId + 码」，没有区服参数**（`userId` 可以是游戏内昵称，也可以是 UID；系统会优先使用玩家填写的昵称，若未填写则直接用 UID，奖励发到该角色邮箱）。
+**要点：BD2 全球兑换接口只需「userId + 码」，没有区服参数**（`userId` 就是游戏内昵称，系统以玩家填写的游戏昵称为唯一身份调用官方接口，奖励发到该角色邮箱）。
 
 ### 错误码对照
 
@@ -50,7 +50,7 @@ bd2-redeem/
 │   ├── run.py             # 启动入口（按 config.HOST/PORT 启动，默认 0.0.0.0 公网可达）
 │   └── requirements.txt
 ├── frontend/
-│   ├── index.html         # 玩家端：绑定 UID + 看生效码（标注来源）+ 查兑换记录
+│   ├── index.html         # 玩家端：绑定昵称 + 看生效码（标注来源）+ 查兑换记录
 │   └── admin.html         # 管理端：录码 + 立即抓取社区码 + 实时统计 + 玩家/兑换明细
 ├── redeem_cli.py          # 零依赖命令行工具（仅标准库，可脱离后端直接批量兑换/测试）
 ├── Dockerfile             # 生产镜像（0.0.0.0 监听）
@@ -82,8 +82,8 @@ python run.py                          # 默认监听 0.0.0.0:8000（公网/局�
 - 管理端  http://<本机IP或域名>:8000/admin  （右上角填管理员令牌后「连接/刷新」）
 
 **使用流程**
-1. 玩家在首页填 **UID** →（可选但**自动兑换必填**）填**游戏昵称** → 点「立即绑定」（会自动补发所有历史有效码）。绑定有效期 **14 天**，到期前重新绑定可续期。
-2. ⚠️ 官方兑换接口 `userId` 认的是**游戏昵称**，不是 UID。前端绑定条已提供「游戏昵称（自动兑换必填）」输入框；**不填昵称则自动兑换会因 `IncorrectUser` 全部失败**。系统优先用昵称调用官方接口，未填则回退用 UID。
+1. 玩家在首页填 **游戏昵称**（即官方兑换身份）→ 点「立即绑定」（会自动补发所有历史有效码）。绑定有效期 **14 天**，到期前重新绑定可续期。
+2. ⚠️ 官方兑换接口 `userId` 认的是**游戏昵称**，不是 UID。系统以玩家填写的游戏昵称为唯一身份调用官方接口，**昵称填错则自动兑换会因 `IncorrectUser` 全部失败**，请务必填写准确可兑换的角色昵称。
 3. 管理员在 `/admin` 录入新码 → 系统立刻为所有**有效期内**的已绑定玩家排队，后台按限速自动兑换。
 4. **社区自动抓取**：系统**每天**自动从配置的社区源抓取最新礼包码并入库（入库即自动兑换）；服务启动/唤醒会先立即抓一次；也可在 `/admin` 点「立即抓取社区兑换码」手动触发。
 5. 玩家/管理员均可查看每条兑换状态。
@@ -105,14 +105,14 @@ python run.py                          # 默认监听 0.0.0.0:8000（公网/局�
 ### 方式 B：零依赖命令行（快速测试，无需安装任何包）
 
 ```bash
-# 单个（UID 或昵称均可）
-python redeem_cli.py --uid "你的UID" --code BD2025SUMMER
+# 单个（用游戏昵称）
+python redeem_cli.py --nickname "你的游戏昵称" --code BD2025SUMMER
 
-# 一个 UID 多个码
-python redeem_cli.py --uid "你的UID" --code CODE1 CODE2 CODE3
+# 一个昵称多个码
+python redeem_cli.py --nickname "你的游戏昵称" --code CODE1 CODE2 CODE3
 
-# UID 清单文件批量（players.txt 每行一个 UID）
-python redeem_cli.py --uidfile players.txt --code BD2025SUMMER --qps 2.5
+# 昵称清单文件批量（players.txt 每行一个昵称）
+python redeem_cli.py --nickfile players.txt --code BD2025SUMMER --qps 2.5
 ```
 
 ---
@@ -120,9 +120,9 @@ python redeem_cli.py --uidfile players.txt --code BD2025SUMMER --qps 2.5
 ## 四、核心 API
 
 玩家端（公开）
-- `POST /api/bind`  绑定 UID `{"uid":"...", "nickname":"游戏昵称(自动兑换必填)", "note":"可选"}`（有效期 14 天）
+- `POST /api/bind`  绑定昵称 `{"nickname":"游戏昵称", "note":"可选"}`（有效期 14 天）
 - `GET  /api/codes`  当前生效礼包码 + 有效玩家总数
-- `GET  /api/status/{uid}`  查询某 UID 的兑换记录
+- `GET  /api/status/{nickname}`  查询某昵称的兑换记录
 
 管理端（需请求头 `X-Admin-Token`）
 - `POST /admin/codes`  录入新码 `{"code":"...", "description":"...", "expires_at":null}` → 自动触发兑换

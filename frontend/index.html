@@ -63,10 +63,6 @@
                   box-shadow:0 4px 12px rgba(154,94,44,.32);transition:transform .12s,box-shadow .2s,opacity .2s}
   .bindbar button:active{transform:scale(.96);box-shadow:0 2px 7px rgba(154,94,44,.28)}
   .bindbar button:disabled{opacity:.55}
-  /* 昵称输入（官方自动兑换必填） */
-  .nick-input{display:block;width:calc(100% - 32px);margin:10px 16px 0;border:1px solid var(--line);
-              border-radius:12px;padding:11px 14px;font-size:14px;outline:none;background:#fff;color:var(--txt);box-sizing:border-box}
-  .nick-input::placeholder{color:#c2b8ac}
 
   /* ===== 分段 tab ===== */
   .tabs{position:sticky;top:0;z-index:20;display:flex;background:rgba(255,255,255,.92);
@@ -147,9 +143,9 @@
   .tag.failed,.tag.invalid,.tag.expired,.tag.bad_user{background:var(--err-bg);color:var(--err)}
 
   /* 我的记录面板里的输入框与按钮 */
-  #queryUid{width:100%;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:15px;
+  #queryNick{width:100%;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:15px;
             outline:none;background:#fff;color:var(--txt);box-sizing:border-box;margin-top:12px}
-  #queryUid::placeholder{color:#c2b8ac}
+  #queryNick::placeholder{color:#c2b8ac}
   .ghost{width:100%;margin-top:12px;padding:11px 16px;border:1px solid var(--line);border-radius:12px;
          background:#fff;color:var(--accent);font-size:14px;font-weight:700;cursor:pointer;
          transition:background .15s,transform .12s}
@@ -165,10 +161,6 @@
         box-shadow:0 6px 20px rgba(0,0,0,.2)}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
-  /* 如何获取 UID 引导 */
-  .uid-tip{display:flex;justify-content:center;margin:10px 0 4px;font-size:12.5px;color:var(--accent);cursor:pointer}
-  .uid-tip span{border-bottom:1px dashed currentColor;opacity:.95}
-  .uid-tip span:hover{opacity:1}
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:60;padding:16px;overflow:auto}
   .modal.show{display:flex}
   .modal-content{position:relative;background:#fff;border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,.35);max-width:680px;width:100%;padding:20px;text-align:center;animation:pop .22s ease-out}
@@ -189,18 +181,15 @@
   <div class="hero">
     <span class="badge">BD2 · 自动兑换</span>
     <h1>🎁 礼包码自动兑换</h1>
-    <p>输入游戏 UID 绑定一次，后续新礼包码自动帮你兑换，奖励直达游戏邮箱。</p>
+    <p>输入游戏昵称绑定一次，后续新礼包码自动帮你兑换，奖励直达游戏邮箱。</p>
     <div class="hero-note"><span class="k">绑定有效期</span><span class="v">14 天 · 到期自动停止为你兑换新码 · 可重新绑定续期</span></div>
   </div>
 
-  <!-- 参考图样式的 UID 绑定条 -->
   <div class="bindbar">
-    <input id="uid" maxlength="24" placeholder="请输入UID" autocomplete="off" />
+    <input id="nickname" maxlength="24" placeholder="请输入游戏昵称" autocomplete="off" />
     <span class="count" id="playerCount">已有人参与</span>
     <button id="bindBtn" onclick="bind()">立即绑定</button>
   </div>
-  <input id="nickname" maxlength="24" placeholder="游戏昵称（自动兑换必填）" autocomplete="off" class="nick-input" />
-  <div class="uid-tip" onclick="openUidTip()"><span>如何获取游戏内UID？</span></div>
 
   <div class="tabs">
     <div class="tab active" data-tab="codes" onclick="switchTab('codes')">礼包码</div>
@@ -227,9 +216,9 @@
     <div class="panel" id="panel-mine">
       <div class="card">
         <h2>我的兑换记录</h2>
-        <p class="desc">绑定后自动展示你的兑换进度。若换设备查询，可重新输入 UID。</p>
+        <p class="desc">绑定后自动展示你的兑换进度。若换设备查询，可重新输入昵称。</p>
         <div id="meBox"></div>
-        <input id="queryUid" maxlength="24" placeholder="输入游戏 UID 查询" autocomplete="off" style="margin-top:12px" />
+        <input id="queryNick" maxlength="24" placeholder="输入游戏昵称查询" autocomplete="off" style="margin-top:12px" />
         <button class="ghost" style="margin-top:12px" onclick="queryStatus()">查询记录</button>
         <div id="statusBox"></div>
       </div>
@@ -243,41 +232,22 @@
   </div>
 </div>
 
-<div id="uidTipModal" class="modal" onclick="closeUidTip(event)">
-  <div class="modal-content" onclick="event.stopPropagation()">
-    <button class="modal-close" onclick="closeUidTip(event)">×</button>
-    <h3>游戏内 UID 获取教程</h3>
-    <img src="/static/assets/bind-tips.png" alt="游戏内UID获取教程" />
-    <p class="modal-caption">1. 点击游戏主界面昵称旁的 + 号；2. 在弹出的资料卡里点击「复制UID」。</p>
-  </div>
-</div>
-
 <div class="toast" id="toast"></div>
 
 <script>
 const ST_TEXT = {success:"已兑换",already:"已兑换过",pending:"排队中",failed:"失败",
   invalid:"码无效",expired:"已过期",exceeded:"超上限",unavailable:"不可用",
-  bad_user:"UID/昵称错误",error:"失败"};
+  bad_user:"昵称错误",error:"失败"};
 
 function toast(msg){
   const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
   clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);
 }
-function openUidTip(){
-  document.getElementById('uidTipModal').classList.add('show');
-  document.body.style.overflow='hidden';
-}
-function closeUidTip(e){
-  // 只有点遮罩或关闭按钮时才关；点内容区不关
-  if(e && e.target!==document.getElementById('uidTipModal') && !e.target.classList.contains('modal-close')) return;
-  document.getElementById('uidTipModal').classList.remove('show');
-  document.body.style.overflow='';
-}
 function switchTab(name){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
   document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id==='panel-'+name));
   if(name==='codes') loadCodes();
-  if(name==='mine' && document.getElementById('meBox').dataset.uid) queryStatus();
+  if(name==='mine' && document.getElementById('meBox').dataset.nick) queryStatus();
 }
 
 // 健壮请求：先读文本再解析，带超时，出错暴露真实 HTTP 状态码 + 原始片段
@@ -349,25 +319,24 @@ const ICONS={
 };
 const COPY_SVG='<svg viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="14" rx="2"/><path d="M16 7h3a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-3"/></svg>';
 
-function showMe(uid, player){
-  document.getElementById('meBox').dataset.uid=uid;
+function showMe(nick, player){
+  document.getElementById('meBox').dataset.nick=nick;
   const exp=player?.expires_at ? `有效期至 ${fmtDate(player.expires_at)}` : '有效期 14 天';
   document.getElementById('meBox').innerHTML=
-    `<div class="me"><div class="ava">${uid.slice(0,1).toUpperCase()}</div>
-     <div><div class="who">${uid}</div><div class="st-txt">✅ 已绑定 · 新礼包码将自动兑换</div>
+    `<div class="me"><div class="ava">${nick.slice(0,1).toUpperCase()}</div>
+     <div><div class="who">${nick}</div><div class="st-txt">✅ 已绑定 · 新礼包码将自动兑换</div>
      <div class="exp">📅 ${exp} · 到期前重新绑定可续期</div></div></div>`;
 }
 
 async function bind(){
-  const uid=document.getElementById('uid').value.trim();
   const nickname=document.getElementById('nickname').value.trim();
   const btn=document.getElementById('bindBtn');
-  if(!uid){toast('请输入游戏内UID');return;}
+  if(!nickname){toast('请输入游戏昵称');return;}
   btn.disabled=true;btn.textContent='绑定中…';
   try{
-    const {ok,data}=await requestJson('/api/bind','POST',{uid, nickname});
+    const {ok,data}=await requestJson('/api/bind','POST',{nickname});
     if(ok){
-      showMe(uid, data.player);
+      showMe(nickname, data.player);
       toast(`绑定成功！已排入 ${data.queued_history_codes??0} 个历史礼包码`);
       switchTab('mine');
       queryStatus();
@@ -459,15 +428,15 @@ async function loadCodes(){
 }
 
 async function queryStatus(){
-  const uid=(document.getElementById('queryUid').value.trim()
-            || document.getElementById('meBox').dataset.uid || '');
+  const nick=(document.getElementById('queryNick').value.trim()
+            || document.getElementById('meBox').dataset.nick || '');
   const box=document.getElementById('statusBox');
-  if(!uid){box.innerHTML='';toast('请先输入 UID 或绑定');return;}
-  document.getElementById('queryUid').value=uid;
-  if(!document.getElementById('meBox').dataset.uid) showMe(uid, null);
+  if(!nick){box.innerHTML='';toast('请先输入昵称或绑定');return;}
+  document.getElementById('queryNick').value=nick;
+  if(!document.getElementById('meBox').dataset.nick) showMe(nick, null);
   box.innerHTML='<p class="empty">查询中…</p>';
   try{
-    const {ok,data}=await requestJson('/api/status/'+encodeURIComponent(uid),'GET');
+    const {ok,data}=await requestJson('/api/status/'+encodeURIComponent(nick),'GET');
     if(!ok){box.innerHTML='<p class="empty">查询失败</p>';return;}
     if(!data.records.length){box.innerHTML='<p class="empty">暂无兑换记录，绑定后稍等片刻再来查。</p>';return;}
     let h='';
@@ -485,7 +454,7 @@ async function queryStatus(){
 }
 
 // 回车快捷绑定
-document.getElementById('uid').addEventListener('keypress', e=>{if(e.key==='Enter') bind();});
+document.getElementById('nickname').addEventListener('keypress', e=>{if(e.key==='Enter') bind();});
 
 // 进入时检查连通性并预载礼包码
 (async function init(){

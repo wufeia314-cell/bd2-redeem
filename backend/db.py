@@ -1,4 +1,4 @@
-"""SQLite 数据层：玩家表(UID 主键+7天有效期)、礼包码表(含奖励/过期/状态)、兑换记录关联表。"""
+"""SQLite 数据层：玩家表(以游戏昵称为唯一身份+14天有效期)、礼包码表(含奖励/过期/状态)、兑换记录关联表。"""
 from __future__ import annotations
 
 import os
@@ -37,15 +37,14 @@ def get_conn():
         conn.close()
 
 
-def _migrate_players_v1(conn):
-    """兼容旧库：原 players 表以 nickname 为主键，现改为 uid 主键 + 有效期。"""
-    print("[db] 检测到旧版 players 表，执行迁移到 UID + 14 天有效期 schema")
+def _migrate_players_to_nickname(conn):
+    """兼容旧库：原 players 表以 uid 为主键，现改回以 nickname 为唯一身份（官方兑换只认昵称）。"""
+    print("[db] 检测到旧版 players 表(uid 主键)，迁移到 nickname 身份 schema")
     conn.execute(
         """
         CREATE TABLE players_new (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            uid         TEXT NOT NULL UNIQUE,
-            nickname    TEXT DEFAULT '',
+            nickname    TEXT NOT NULL UNIQUE,    -- 玩家游戏昵称，即官方兑换身份 userId
             note        TEXT DEFAULT '',
             active      INTEGER NOT NULL DEFAULT 1,
             created_at  TEXT NOT NULL,
@@ -54,9 +53,13 @@ def _migrate_players_v1(conn):
         """
     )
     rows = conn.execute(
-        "SELECT id, nickname, note, active, created_at FROM players"
+        "SELECT id, uid, nickname, note, active, created_at FROM players"
     ).fetchall()
     for r in rows:
+        # 身份 = 昵称优先；旧库中只填了 UID 的，用 UID 兜底（旧记录兑换时官方会判昵称错，仅保留展示）
+        identity = (r["nickname"] or "").strip() or (r["uid"] or "").strip()
+        if not identity:
+            continue
         created = r["created_at"] or _now()
         try:
             exp = (datetime.fromisoformat(created) + timedelta(days=config.BIND_VALIDITY_DAYS)).isoformat(
@@ -65,9 +68,9 @@ def _migrate_players_v1(conn):
         except Exception:
             exp = _expires(config.BIND_VALIDITY_DAYS)
         conn.execute(
-            "INSERT INTO players_new (id, uid, nickname, note, active, created_at, expires_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (r["id"], r["nickname"], r["nickname"], r["note"], r["active"], created, exp),
+            "INSERT OR IGNORE INTO players_new (id, nickname, note, active, created_at, expires_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (r["id"], identity, r["note"], r["active"], created, exp),
         )
     conn.execute("DROP TABLE players")
     conn.execute("ALTER TABLE players_new RENAME TO players")
@@ -91,12 +94,11 @@ def init_db() -> None:
     with get_conn() as conn:
         conn.executescript(
             """
-            -- 玩家表：以 UID 为业务主键；nickname 用于调用官方接口(可为空，为空则用 uid)
+            -- 玩家表：以「游戏昵称」为唯一身份（官方兑换接口只认昵称，昵称即 userId）
             CREATE TABLE IF NOT EXISTS players (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                uid         TEXT NOT NULL UNIQUE,    -- 玩家输入的 UID
-                nickname    TEXT DEFAULT '',           -- 游戏昵称(与 UID 不同时，兑换时优先用它)
-                note        TEXT DEFAULT '',          -- 备注(如区服说明)
+                nickname    TEXT NOT NULL UNIQUE,    -- 玩家游戏昵称，即官方兑换身份 userId
+                note        TEXT DEFAULT '',          -- 备注(可选)
                 active      INTEGER NOT NULL DEFAULT 1,
                 created_at  TEXT NOT NULL,
                 expires_at  TEXT NOT NULL            -- 绑定有效期(默认 14 天)
@@ -148,8 +150,8 @@ def init_db() -> None:
             cols = {
                 r["name"] for r in conn.execute("PRAGMA table_info(players)").fetchall()
             }
-            if "uid" not in cols:
-                _migrate_players_v1(conn)
+            if "uid" in cols:
+                _migrate_players_to_nickname(conn)
         if "codes" in tables:
             _migrate_codes_v2(conn)
         # codes 表补充「官方真实状态」列，兼容旧库（不验证就显示永久有效是误导）
@@ -201,22 +203,22 @@ def get_participant_count() -> int:
 
 
 # ---------------- 玩家 ----------------
-def add_player(uid: str, nickname: str = "", note: str = "") -> dict:
-    uid = uid.strip()
-    if not uid:
-        raise ValueError("UID 不能为空")
+def add_player(nickname: str, note: str = "") -> dict:
+    nickname = (nickname or "").strip()
+    if not nickname:
+        raise ValueError("游戏昵称不能为空")
     with _lock, get_conn() as conn:
         existing = conn.execute(
-            "SELECT 1 FROM players WHERE uid=?", (uid,)
+            "SELECT 1 FROM players WHERE nickname=?", (nickname,)
         ).fetchone()
         is_new = existing is None
         cur = conn.execute(
-            "INSERT INTO players(uid, nickname, note, active, created_at, expires_at) "
-            "VALUES(?,?,?,1,?,?) "
-            "ON CONFLICT(uid) DO UPDATE SET active=1, nickname=excluded.nickname, "
-            "note=excluded.note, expires_at=excluded.expires_at "
+            "INSERT INTO players(nickname, note, active, created_at, expires_at) "
+            "VALUES(?,?,1,?,?) "
+            "ON CONFLICT(nickname) DO UPDATE SET active=1, note=excluded.note, "
+            "expires_at=excluded.expires_at "
             "RETURNING *",
-            (uid, nickname.strip(), note, _now(), _expires(config.BIND_VALIDITY_DAYS)),
+            (nickname, note, _now(), _expires(config.BIND_VALIDITY_DAYS)),
         )
         row = dict(cur.fetchone())
         # 仅在真正新增玩家时累加参与者计数；已有玩家重新绑定（续期）不重复累加
@@ -225,11 +227,11 @@ def add_player(uid: str, nickname: str = "", note: str = "") -> dict:
         return row
 
 
-def get_player_by_uid(uid: str) -> dict | None:
+def get_player_by_nickname(nickname: str) -> dict | None:
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT * FROM players WHERE uid=? AND active=1 AND expires_at > datetime('now')",
-            (uid.strip(),),
+            "SELECT * FROM players WHERE nickname=? AND active=1 AND expires_at > datetime('now')",
+            (nickname.strip(),),
         ).fetchone()
         return dict(row) if row else None
 
@@ -244,9 +246,9 @@ def list_players(active_only: bool = True) -> list[dict]:
         return [dict(r) for r in conn.execute(q).fetchall()]
 
 
-def deactivate_player(uid: str) -> None:
+def deactivate_player(nickname: str) -> None:
     with _lock, get_conn() as conn:
-        conn.execute("UPDATE players SET active=0 WHERE uid=?", (uid.strip(),))
+        conn.execute("UPDATE players SET active=0 WHERE nickname=?", (nickname.strip(),))
 
 
 # ---------------- 礼包码 ----------------
@@ -523,12 +525,12 @@ def expire_stale_pending() -> int:
 
 
 def get_pending_jobs() -> list[dict]:
-    """取出所有待处理任务，联表带出 UID、昵称与码。过滤过期玩家与过期码。"""
+    """取出所有待处理任务，联表带出昵称与码。过滤过期玩家与过期码。"""
     with get_conn() as conn:
         rows = conn.execute(
             """
             SELECT r.id AS redemption_id, r.player_id, r.code_id, r.attempts,
-                   p.uid, p.nickname, c.code
+                   p.nickname, c.code
             FROM redemptions r
             JOIN players p ON p.id = r.player_id
             JOIN codes   c ON c.id = r.code_id
@@ -558,20 +560,20 @@ def update_redemption(redemption_id: int, status: str, message: str, inc_attempt
             )
 
 
-def get_player_redemptions(uid: str, limit: int = 1000) -> list[dict]:
-    """查询某个 UID 的兑换记录。"""
+def get_player_redemptions(nickname: str, limit: int = 1000) -> list[dict]:
+    """查询某个游戏昵称的兑换记录。"""
     with get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT r.id, p.uid, p.nickname, c.code, r.status, r.message, r.attempts, r.updated_at
+            SELECT r.id, p.nickname, c.code, r.status, r.message, r.attempts, r.updated_at
             FROM redemptions r
             JOIN players p ON p.id = r.player_id
             JOIN codes   c ON c.id = r.code_id
-            WHERE p.uid = ?
+            WHERE p.nickname = ?
             ORDER BY r.updated_at DESC
             LIMIT ?
             """,
-            (uid.strip(), limit),
+            (nickname.strip(), limit),
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -601,7 +603,7 @@ def recent_redemptions(limit: int = 100) -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT r.id, p.uid, p.nickname, c.code, r.status, r.message, r.attempts, r.updated_at
+            SELECT r.id, p.nickname, c.code, r.status, r.message, r.attempts, r.updated_at
             FROM redemptions r
             JOIN players p ON p.id = r.player_id
             JOIN codes   c ON c.id = r.code_id

@@ -221,9 +221,9 @@ async function loadRedemptions(){
     if(r.status===401){box.innerHTML='<p style="color:var(--err)">令牌无效</p>';return;}
     const d=await r.json();
     if(!d.records.length){box.innerHTML='<p style="color:var(--sub);font-size:13px">暂无记录</p>';return;}
-    let h='<table><tr><th>UID</th><th>游戏昵称</th><th>礼包码</th><th>状态</th><th>尝试</th><th>说明</th><th>更新时间</th></tr>';
+    let h='<table><tr><th>游戏昵称</th><th>礼包码</th><th>状态</th><th>尝试</th><th>说明</th><th>更新时间</th></tr>';
     for(const x of d.records){
-      h+=`<tr><td>${x.uid}</td><td style="color:var(--sub)">${x.nickname||'-'}</td>
+      h+=`<tr><td>${x.nickname||'-'}</td>
         <td style="font-family:monospace">${x.code}</td>
         <td class="st ${x.status}">${ST_TEXT[x.status]||x.status}</td>
         <td>${x.attempts}</td><td style="color:var(--sub)">${x.message||''}</td>
@@ -240,10 +240,10 @@ async function loadPlayers(){
     if(r.status===401){box.innerHTML='<p style="color:var(--err)">令牌无效</p>';return;}
     const d=await r.json();
     if(!d.players.length){box.innerHTML='<p style="color:var(--sub);font-size:13px">暂无玩家</p>';return;}
-    let h='<table><tr><th>UID</th><th>游戏昵称</th><th>备注</th><th>有效期至</th><th>状态</th></tr>';
+    let h='<table><tr><th>游戏昵称</th><th>备注</th><th>有效期至</th><th>状态</th></tr>';
     for(const x of d.players){
       const active = x.active==1 && new Date(x.expires_at) > new Date();
-      h+=`<tr><td>${x.uid}</td><td style="color:var(--sub)">${x.nickname||'-'}</td>
+      h+=`<tr><td>${x.nickname||'-'}</td>
         <td style="color:var(--sub)">${x.note||''}</td>
         <td style="color:var(--sub)">${(x.expires_at||'').replace('T',' ').slice(0,19)}</td>
         <td class="st ${active?'success':'error'}">${active?'有效期内':'已过期/停用'}</td></tr>`;
