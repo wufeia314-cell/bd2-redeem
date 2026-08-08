@@ -43,6 +43,11 @@ PORT = int(os.getenv("PORT", os.getenv("BD2_PORT", "8000")))
 # 玩家绑定后多少天内有效（默认 7 天）。过期后不再为其自动兑换新码，重新绑定可续期。
 BIND_VALIDITY_DAYS = int(os.getenv("BD2_BIND_VALIDITY_DAYS", "7"))
 
+# ---- 参与者计数基数 ----
+# 展示的「已有 X 人参与」由 基数 + 实际绑定人数 构成。基数是一个固定起始值，
+# 写在代码里（而非数据库），保证任何情况下（含部署重置数据库）都不会被清零或清空。
+PARTICIPANT_BASE = int(os.getenv("BD2_PARTICIPANT_BASE", "185462"))
+
 # ---- 社区兑换码自动抓取 ----
 # 是否启用后台定时抓取（默认开）。设 0 关闭。
 FETCH_ENABLED = os.getenv("BD2_FETCH_ENABLED", "1") != "0"

@@ -353,10 +353,10 @@ function fallbackCopy(text, ok, fail){
   }catch(e){ fail(); }
 }
 
-function renderCodes(list, totalPlayers){
+function renderCodes(list, participants){
   const box=document.getElementById('codes');
   const countBox=document.getElementById('playerCount');
-  countBox.textContent=`已有${(totalPlayers||0).toLocaleString()}人参与`;
+  countBox.textContent=`已有${(participants||0).toLocaleString()}人参与`;
   if(!list.length){box.innerHTML='<span class="empty">暂无兑换码</span>';return;}
   // 稳定分区：待官方验证且非中文的码沉到最底部，其余保持原排序（最近更新在前）
   const ordered=list.slice().sort((a,b)=>(_isBottomCode(a)?1:0)-(_isBottomCode(b)?1:0));
@@ -406,7 +406,7 @@ async function loadCodes(){
   try{
     const {ok,data}=await requestJson('/api/codes?show_expired='+showExpired,'GET');
     if(!ok){box.innerHTML='<span class="empty">加载失败</span>';return;}
-    renderCodes(data.codes||[], data.total_players);
+    renderCodes(data.codes||[], data.participants);
   }catch(e){box.innerHTML='<span class="empty">加载失败：'+e.message+'</span>';}
 }
 

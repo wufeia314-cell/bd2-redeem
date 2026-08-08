@@ -188,15 +188,14 @@ def bind(req: BindReq, request: Request):
         raise HTTPException(status_code=429, detail="绑定过于频繁，请稍后再试")
     player = db.add_player(req.uid, req.nickname, req.note)
     queued = db.enqueue_all_codes_for_player(player["id"])
-    return {"ok": True, "player": player, "queued_history_codes": queued}
+    return {"ok": True, "player": player, "queued_history_codes": queued, "participants": db.get_participant_count()}
 
 
 @app.get("/api/codes")
 def public_codes(show_expired: bool = False):
-    """公开：查看当前礼包码列表（默认隐藏过期码）和有效玩家总数。"""
-    s = db.stats()
+    """公开：查看当前礼包码列表（默认隐藏过期码）和参与者总数（基数+实际绑定）。"""
     codes = db.list_codes(active_only=True, include_expired=show_expired)
-    return {"codes": codes, "total_players": s["players"], "show_expired": show_expired}
+    return {"codes": codes, "participants": db.get_participant_count(), "show_expired": show_expired}
 
 
 @app.get("/api/status/{uid}")
@@ -281,7 +280,9 @@ def admin_sources():
 
 @app.get("/admin/stats", dependencies=[Depends(require_admin)])
 def admin_stats():
-    return db.stats()
+    s = db.stats()
+    s["participants"] = db.get_participant_count()
+    return s
 
 
 @app.get("/admin/redemptions", dependencies=[Depends(require_admin)])

@@ -130,6 +130,12 @@ def init_db() -> None:
             );
 
             CREATE INDEX IF NOT EXISTS idx_redemptions_status ON redemptions(status);
+
+            -- 元数据键值表：用于持久化「参与者计数」等不应随数据重置的标量。
+            CREATE TABLE IF NOT EXISTS meta (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
             """
         )
 
@@ -161,6 +167,37 @@ def init_db() -> None:
             )
         except Exception:
             pass
+        # 参与者计数：仅在「尚未初始化」时写入基数，绝不覆盖已累加的值（永不重置/清零）。
+        _ensure_participants(conn)
+
+
+# ---------------- 参与者计数（永不重置） ----------------
+def _ensure_participants(conn) -> None:
+    """仅在 meta 中尚无 participants 键时写入基数；已存在则保留累加值，绝不覆盖/清零。"""
+    row = conn.execute("SELECT 1 FROM meta WHERE key='participants'").fetchone()
+    if not row:
+        conn.execute(
+            "INSERT INTO meta(key, value) VALUES('participants', ?)",
+            (str(config.PARTICIPANT_BASE),),
+        )
+
+
+def _inc_participants(conn) -> None:
+    """原子地把参与者计数 +1。只在新玩家绑定（首次插入）时调用，保证单向增长。"""
+    conn.execute(
+        "UPDATE meta SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT) "
+        "WHERE key='participants'"
+    )
+
+
+def get_participant_count() -> int:
+    with get_conn() as conn:
+        _ensure_participants(conn)
+        row = conn.execute("SELECT value FROM meta WHERE key='participants'").fetchone()
+        try:
+            return int(row["value"])
+        except Exception:
+            return config.PARTICIPANT_BASE
 
 
 # ---------------- 玩家 ----------------
@@ -169,6 +206,10 @@ def add_player(uid: str, nickname: str = "", note: str = "") -> dict:
     if not uid:
         raise ValueError("UID 不能为空")
     with _lock, get_conn() as conn:
+        existing = conn.execute(
+            "SELECT 1 FROM players WHERE uid=?", (uid,)
+        ).fetchone()
+        is_new = existing is None
         cur = conn.execute(
             "INSERT INTO players(uid, nickname, note, active, created_at, expires_at) "
             "VALUES(?,?,?,1,?,?) "
@@ -177,7 +218,11 @@ def add_player(uid: str, nickname: str = "", note: str = "") -> dict:
             "RETURNING *",
             (uid, nickname.strip(), note, _now(), _expires(config.BIND_VALIDITY_DAYS)),
         )
-        return dict(cur.fetchone())
+        row = dict(cur.fetchone())
+        # 仅在真正新增玩家时累加参与者计数；已有玩家重新绑定（续期）不重复累加
+        if is_new:
+            _inc_participants(conn)
+        return row
 
 
 def get_player_by_uid(uid: str) -> dict | None:
