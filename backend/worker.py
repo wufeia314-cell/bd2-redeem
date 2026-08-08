@@ -67,6 +67,13 @@ def _run_loop() -> None:
                         )
                 else:
                     db.update_redemption(job["redemption_id"], result.status, result.message)
+                    # 码级错误（与玩家无关，纯粹是码本身问题）→ 回写 codes 真实状态，
+                    # 前端据此显示真实状态，并不再徒劳地反复兑换该码
+                    if result.status in ("expired", "invalid", "exceeded", "unavailable"):
+                        try:
+                            db.mark_code_official_status(job["code_id"], result.status)
+                        except Exception as exc:  # noqa: BLE001
+                            print(f"[worker] 标记码官方状态出错: {exc}")
 
                 # 限速：保证两次请求间隔 >= interval
                 elapsed = time.monotonic() - t0

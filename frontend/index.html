@@ -113,6 +113,8 @@
   .code-card .status.active{background:var(--ok-bg);color:var(--ok)}
   .code-card .status.expired{background:#f1f1f1;color:#9a9a9a}
   .code-card .status.inactive{background:var(--err-bg);color:var(--err)}
+  .code-card.dead{opacity:.55}
+  .code-card .status.dead{background:#eee;color:#999}
   .code-card .body{display:flex;align-items:center;gap:9px}
   .code-card .icon{width:40px;height:40px;border-radius:11px;background:linear-gradient(135deg,var(--chip),var(--chip-l));
                    display:flex;align-items:center;justify-content:center;flex:0 0 40px}
@@ -264,7 +266,7 @@ function fmtMD(iso){
   return `${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 function daysLeft(iso){
-  if(!iso) return '永久有效';
+  if(!iso) return '长期有效(待官方验证)';
   const exp=new Date(iso);
   if(isNaN(exp)) return '';
   const now=new Date();
@@ -343,9 +345,14 @@ function renderCodes(list, totalPlayers){
   if(!list.length){box.innerHTML='<span class="empty">暂无兑换码</span>';return;}
   box.innerHTML=list.map(c=>{
     const upd=c.updated_at ? `${fmtMD(c.updated_at)}更新` : '近期更新';
-    const exp=daysLeft(c.expires_at);
-    const status=c.status||'active';
-    const statusText={active:'待兑换',expired:'已过期',inactive:'已停用'}[status]||'待兑换';
+    // 优先采用官方实测状态：一旦 worker 核实码已过期/无效等，显示真实状态
+    const off=c.official_status||'pending';
+    const DEAD={expired:'已过期',invalid:'已失效',exceeded:'已达上限',unavailable:'暂不可用'};
+    let statusCls, statusText, exp;
+    if(DEAD[off]){ statusCls='dead'; statusText=DEAD[off]; exp=''; }
+    else { const s=c.status||'active'; statusCls=s;
+           statusText={active:'待兑换',expired:'已过期',inactive:'已停用'}[s]||'待兑换';
+           exp=daysLeft(c.expires_at); }
     // 只有真正抓到/录入了奖励内容才显示图标+奖励区，否则留空（不显示无意义的空图标）
     const hasReward=!!(c.reward_name || c.description);
     const rawQty=c.reward_qty||'';
@@ -358,13 +365,13 @@ function renderCodes(list, totalPlayers){
           ${qty?`<div class="reward-qty">${qty}</div>`:''}
         </div>
       </div>`:'';
-    return `<div class="code-card">
+    return `<div class="code-card${DEAD[off]?' dead':''}">
       <div class="meta-top">
         <div class="dates">
           <span class="upd">${upd}</span>
           <span class="exp">${exp}</span>
         </div>
-        <span class="status ${status}">${statusText}</span>
+        <span class="status ${statusCls}">${statusText}</span>
       </div>
       ${rewardBlock}
       <div class="code-row">

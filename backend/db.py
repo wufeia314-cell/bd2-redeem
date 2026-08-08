@@ -146,6 +146,13 @@ def init_db() -> None:
                 _migrate_players_v1(conn)
         if "codes" in tables:
             _migrate_codes_v2(conn)
+        # codes 表补充「官方真实状态」列，兼容旧库（不验证就显示永久有效是误导）
+        try:
+            conn.execute(
+                "ALTER TABLE codes ADD COLUMN official_status TEXT DEFAULT 'pending'"
+            )
+        except Exception:
+            pass
 
 
 # ---------------- 玩家 ----------------
@@ -324,6 +331,19 @@ def deactivate_code(code: str) -> bool:
         return cur.rowcount > 0
 
 
+def mark_code_official_status(code_id: int, status: str) -> None:
+    """回写礼包码的官方真实状态（pending/valid/expired/invalid/exceeded/unavailable）。
+
+    当 worker 实测某码被官方判定为过期/无效等码级错误时调用，使前端能展示
+    真实状态，而不是一直显示社区标注的「永久有效」。
+    """
+    with _lock, get_conn() as conn:
+        conn.execute(
+            "UPDATE codes SET official_status=?, updated_at=? WHERE id=?",
+            (status, _now(), code_id),
+        )
+
+
 def list_codes(active_only: bool = False, include_expired: bool = True) -> list[dict]:
     q = "SELECT * FROM codes"
     params = []
@@ -424,6 +444,7 @@ def get_pending_jobs() -> list[dict]:
               AND p.expires_at > datetime('now')
               AND c.active = 1
               AND (c.expires_at IS NULL OR c.expires_at > datetime('now'))
+              AND (c.official_status IS NULL OR c.official_status IN ('pending', 'valid'))
             ORDER BY r.id
             """
         ).fetchall()
