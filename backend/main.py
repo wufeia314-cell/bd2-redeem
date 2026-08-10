@@ -202,10 +202,10 @@ def bind(req: BindReq, request: Request):
 
 
 @app.get("/api/codes")
-def public_codes(show_expired: bool = False):
-    """公开：查看当前礼包码列表（默认隐藏过期码）和参与者总数（基数+实际绑定）。"""
-    codes = db.list_codes(active_only=True, include_expired=show_expired)
-    return {"codes": codes, "participants": db.get_participant_count(), "show_expired": show_expired}
+def public_codes():
+    """公开：查看当前礼包码列表（始终隐藏过期/失效码）和参与者总数（基数+实际绑定）。"""
+    codes = db.list_codes(active_only=True, include_expired=False)
+    return {"codes": codes, "participants": db.get_participant_count()}
 
 
 @app.get("/api/status/{nickname}")

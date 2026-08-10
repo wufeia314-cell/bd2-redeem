@@ -104,8 +104,6 @@
   /* 礼包码卡片网格 */
   .codes-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
   .codes-header h2{margin:0;font-size:15px;font-weight:800;letter-spacing:.2px}
-  .toggle-expired{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--sub);cursor:pointer}
-  .toggle-expired input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
   .code-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
   .code-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:11px 11px 10px;
              box-shadow:var(--shadow-sm);display:flex;flex-direction:column;gap:8px;position:relative;
@@ -211,10 +209,6 @@
       <div class="card">
         <div class="codes-header">
           <h2>当前生效的礼包码</h2>
-          <label class="toggle-expired">
-            <input type="checkbox" id="showExpired" onchange="loadCodes()" />
-            <span>显示过期兑换码</span>
-          </label>
         </div>
         <div id="codes"><span class="empty">加载中…</span></div>
       </div>
@@ -493,9 +487,8 @@ function renderCodes(list, participants){
 
 async function loadCodes(){
   const box=document.getElementById('codes');
-  const showExpired=document.getElementById('showExpired').checked;
   try{
-    const {ok,data}=await requestJson('/api/codes?show_expired='+showExpired,'GET');
+    const {ok,data}=await requestJson('/api/codes','GET');
     if(!ok){box.innerHTML='<span class="empty">加载失败</span>';return;}
     renderCodes(data.codes||[], data.participants);
   }catch(e){box.innerHTML='<span class="empty">加载失败：'+e.message+'</span>';}
