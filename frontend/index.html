@@ -147,7 +147,7 @@
   .tag{font-size:12px;font-weight:700;padding:4px 11px;border-radius:20px;white-space:nowrap}
   .tag.success,.tag.already{background:var(--ok-bg);color:var(--ok)}
   .tag.pending{background:var(--pending-bg);color:var(--pending)}
-  .tag.failed,.tag.invalid,.tag.expired,.tag.bad_user{background:var(--err-bg);color:var(--err)}
+  .tag.failed,.tag.invalid,.tag.expired,.tag.bad_user,.tag.error{background:var(--err-bg);color:var(--err)}
 
   /* 我的记录面板里的输入框与按钮 */
   #queryNick{width:100%;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:15px;
@@ -449,9 +449,17 @@ function renderCodes(list, participants){
     const DEAD={expired:'已过期',invalid:'已失效',exceeded:'已达上限',unavailable:'暂不可用'};
     let statusCls, statusText, exp;
     if(DEAD[off]){ statusCls='dead'; statusText=DEAD[off]; exp=''; }
-    else { const s=c.status||'active'; statusCls=s;
-           statusText={active:'待兑换',expired:'已过期',inactive:'已停用'}[s]||'待兑换';
-           exp=daysLeft(c.expires_at); }
+    else {
+      // 若当前绑定昵称对该码有兑换记录，优先展示个人状态
+      const my=c.my_status;
+      if(my==='success' || my==='already'){ statusCls='success'; statusText='已兑换'; }
+      else if(my==='pending' || my==='network_error'){ statusCls='pending'; statusText='兑换中'; }
+      else if(my){ statusCls=my; statusText={invalid:'兑换失败',expired:'兑换失败',exceeded:'兑换失败',
+                                              unavailable:'兑换失败',bad_user:'昵称错误',error:'兑换失败'}[my]||'兑换失败'; }
+      else { const s=c.status||'active'; statusCls=s;
+             statusText={active:'待兑换',expired:'已过期',inactive:'已停用'}[s]||'待兑换'; }
+      exp=daysLeft(c.expires_at);
+    }
     // 只有真正抓到/录入了奖励内容才显示图标+奖励区，否则留空（不显示无意义的空图标）
     const hasReward=!!(c.reward_name || c.description);
     const rawQty=c.reward_qty||'';
@@ -487,8 +495,10 @@ function renderCodes(list, participants){
 
 async function loadCodes(){
   const box=document.getElementById('codes');
+  const nick=localStorage.getItem(LS_NICK)||'';
+  const url=nick ? '/api/codes?nickname='+encodeURIComponent(nick) : '/api/codes';
   try{
-    const {ok,data}=await requestJson('/api/codes','GET');
+    const {ok,data}=await requestJson(url,'GET');
     if(!ok){box.innerHTML='<span class="empty">加载失败</span>';return;}
     renderCodes(data.codes||[], data.participants);
   }catch(e){box.innerHTML='<span class="empty">加载失败：'+e.message+'</span>';}

@@ -614,6 +614,22 @@ def get_player_redemptions(nickname: str, limit: int = 1000) -> list[dict]:
         return [dict(r) for r in rows]
 
 
+def get_player_code_statuses(nickname: str) -> dict[str, str]:
+    """返回某昵称对每个礼包码的兑换状态：{code: status}。"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT c.code, r.status
+            FROM redemptions r
+            JOIN players p ON p.id = r.player_id
+            JOIN codes   c ON c.id = r.code_id
+            WHERE p.nickname = ?
+            """,
+            (nickname.strip(),),
+        ).fetchall()
+        return {r["code"]: r["status"] for r in rows}
+
+
 def stats() -> dict:
     with get_conn() as conn:
         by_status = {

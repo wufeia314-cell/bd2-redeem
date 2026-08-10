@@ -202,9 +202,14 @@ def bind(req: BindReq, request: Request):
 
 
 @app.get("/api/codes")
-def public_codes():
-    """公开：查看当前礼包码列表（始终隐藏过期/失效码）和参与者总数（基数+实际绑定）。"""
+def public_codes(nickname: str | None = None):
+    """公开：查看当前礼包码列表（始终隐藏过期/失效码）和参与者总数（基数+实际绑定）。
+    若提供 nickname，则在每个码里附加 my_status（该昵称对此码的兑换状态）。"""
     codes = db.list_codes(active_only=True, include_expired=False)
+    if nickname and nickname.strip():
+        my_statuses = db.get_player_code_statuses(nickname.strip())
+        for c in codes:
+            c["my_status"] = my_statuses.get(c["code"])
     return {"codes": codes, "participants": db.get_participant_count()}
 
 
