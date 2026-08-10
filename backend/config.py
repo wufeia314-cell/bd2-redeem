@@ -63,12 +63,10 @@ GAMEKEE_GAME_ALIAS = os.getenv("BD2_GAMEKEE_ALIAS", "zsca2")
 GAMEKEE_CDK_SERVER_ID = int(os.getenv("BD2_GAMEKEE_SERVER_ID", "12"))
 GAMEKEE_FETCH_ENABLED = os.getenv("BD2_GAMEKEE_FETCH_ENABLED", "1") != "0"
 
-# 抓取源（社区/攻略站的礼包码汇总页，作为 GameKee 的补充/冗余）。
-# 可用环境变量 BD2_COUPON_SOURCES 覆盖，格式为 JSON 数组。
-_DEFAULT_SOURCES = [
-    "https://ucngame.com/codes/brown-dust-2-codes/",
-    "https://mobi.gg/en/tips/brown-dust-2-gift-codes",
-]
+# 其它社区/攻略站抓取源（已停用）。
+# 当前 fetcher 只保留 GameKee 作为唯一自动抓取源，故默认空列表。
+# 保留环境变量读取能力仅作向后兼容，设置它也不再被 fetch_all 使用。
+_DEFAULT_SOURCES: list[str] = []
 _env_sources = os.getenv("BD2_COUPON_SOURCES")
 if _env_sources:
     try:

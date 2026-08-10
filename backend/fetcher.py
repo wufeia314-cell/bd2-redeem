@@ -1,16 +1,15 @@
 """社区兑换码自动抓取器。
 
-目标：定期从配置的社区/攻略源抓取最新《棕色尘埃2》礼包码，归一化并尽量提取
+目标：定期从 GameKee Wiki 接口抓取最新《棕色尘埃2》礼包码，归一化并尽量提取
 奖励描述、过期时间等元数据后交给 db 入库，入库即触发自动兑换。
 
 设计要点：
-- 不依赖任何单一站点的私有 API，采用「通用提取 + 已知前缀 + 关键词上下文」策略，
-  对多数礼包码汇总页都有效，新增源只需往 config.COUPON_SOURCES 里加 URL。
+- 使用 GameKee 棕色尘埃2 Wiki 官方维护的兑换码接口（已逆向其 SPA），
+  作为唯一抓取源；不再抓取其它英文社区站。
 - BD2 礼包码形态相对固定（以 BD2 / 2026BD2 / BURAJO / WAITING4 / THANK / 1YEAR ...
   等开头），据此高置信识别；minified 页面常带 React 伪影（末尾多一个字母），做归一化。
-- 提取到的候选码会尝试解析附近的奖励描述与过期时间；英文站多为通用描述，
-  可在管理后台手动覆盖成中文奖励信息。
 - 若经 worker 实际兑换判定为无效/过期，会被标记且无害，管理员可去激活。
+- 保留的通用 HTML 提取函数（extract_codes/fetch_source）仅供本地调试/测试使用。
 """
 from __future__ import annotations
 
@@ -447,30 +446,21 @@ def fetch_source(url: str, timeout: float | None = None) -> list[dict]:
 
 
 def fetch_all(sources: list[str] | None = None) -> dict:
-    """抓取所有配置源，合并去重。返回统计。
+    """抓取 GameKee Wiki 兑换码接口。返回统计。
 
-    GameKee 接口作为优先源先合并（中文奖励/过期更准确），其余 HTML 源补充去重。
+    sources 参数已停用：当前只保留 GameKee 作为唯一自动抓取源，不再补充其它社区 HTML 源。
     """
-    sources = sources or config.COUPON_SOURCES
+    _ = sources  # 兼容旧调用签名，不再使用
     merged: dict[str, dict] = {}
     per_source: dict[str, int] = {}
 
-    # 1) GameKee 优先（若启用）
+    # 仅 GameKee 中文权威源（若启用）
     if config.GAMEKEE_FETCH_ENABLED:
         gk = fetch_gamekee_codes()
         per_source["gamekee.com(zsca2)"] = len(gk)
         for c in gk:
             c["source"] = "auto:gamekee"  # 中文权威源标记，前端据此优先置顶
-            merged[c["code"]] = c  # 先入为主，后续源不覆盖
-
-    # 2) 其它 HTML 社区源补充
-    for url in sources:
-        codes = fetch_source(url)
-        per_source[_host_of(url)] = len(codes)
-        for c in codes:
-            c.setdefault("source", "auto:community")
-            c.setdefault("published_at", "")
-            merged.setdefault(c["code"], c)
+            merged[c["code"]] = c
 
     return {
         "fetched_at": time.strftime("%Y-%m-%d %H:%M:%S"),

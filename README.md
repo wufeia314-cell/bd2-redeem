@@ -85,7 +85,7 @@ python run.py                          # 默认监听 0.0.0.0:8000（公网/局�
 1. 玩家在首页填 **游戏昵称**（即官方兑换身份）→ 点「立即绑定」（会自动补发所有历史有效码）。绑定有效期 **14 天**，到期前重新绑定可续期。
 2. ⚠️ 官方兑换接口 `userId` 认的是**游戏昵称**，不是 UID。系统以玩家填写的游戏昵称为唯一身份调用官方接口，**昵称填错则自动兑换会因 `IncorrectUser` 全部失败**，请务必填写准确可兑换的角色昵称。
 3. 管理员在 `/admin` 录入新码 → 系统立刻为所有**有效期内**的已绑定玩家排队，后台按限速自动兑换。
-4. **社区自动抓取**：系统**每天**自动从配置的社区源抓取最新礼包码并入库（入库即自动兑换）；服务启动/唤醒会先立即抓一次；也可在 `/admin` 点「立即抓取社区兑换码」手动触发。
+4. **GameKee 自动抓取**：系统**每天**自动从 GameKee 棕色尘埃2 Wiki 接口抓取最新礼包码并入库（入库即自动兑换）；服务启动/唤醒会先立即抓一次；也可在 `/admin` 点「立即抓取社区兑换码」手动触发。
 5. 玩家/管理员均可查看每条兑换状态。
 
 #### 🌐 让非本机玩家通过链接访问（公网/局域网）
@@ -135,19 +135,16 @@ python redeem_cli.py --nickfile players.txt --code BD2025SUMMER --qps 2.5
 
 ### 社区兑换码自动抓取
 
-`fetcher.py` 定期从配置的社区/攻略站礼包码汇总页抓取最新码，归一化后入库（入库即触发自动兑换）。
+`fetcher.py` 只从 **GameKee 棕色尘埃2 Wiki** 接口抓取最新码，归一化后入库（入库即触发自动兑换）。
 
-- **默认源**：`ucngame.com`（结构干净的汇总表）、`mobi.gg`。可自行在 `config.py` 的
-  `COUPON_SOURCES` 增减，或用环境变量 `BD2_COUPON_SOURCES`（JSON 数组）覆盖。
-- **识别策略**：基于 BD2 礼包码已知前缀（`BD2` / `2026BD2` / `BURAJO` / `WAITING4` / `THANK` /
-  `1YEAR` …）+ 关键词上下文（兑换码/code/coupon 附近），并对 minified 页面的 React 伪影做归一化与
-  单字符纠错（例如 `WAITING4LEGEN` → `WAITING4LEGEND`）。
+- **唯一源**：`gamekee.com`（zsca2，接口 `GET /v1/game/cdk/queryByServerIdPageList`，需带 `game-alias: zsca2` 头），
+  由 Wiki 编辑从官方渠道维护，返回**中文奖励 + 精确过期时间戳**。不再抓取其它英文社区站。
+- **识别策略**：GameKee 接口直接给出礼包码与奖励，无需页面正则；保留的通用 HTML 提取函数仅供本地调试/测试。
 - **无害兜底**：抓到的候选码若经 worker 实际兑换判定为无效/过期，会被标记且不影响玩家；管理员可在
   `/admin` 一键去激活。建议定期清理过期码以保持列表整洁。
 - **抓取频率**：`BD2_FETCH_INTERVAL_MIN`（默认 **1440 分钟 = 每天一轮**）；设 `BD2_FETCH_ENABLED=0` 可关闭。
-- **优先源 GameKee Wiki 接口**：`fetcher.py` 已逆向接入 GameKee 棕色尘埃2 Wiki 兑换码接口
-  （`GET /v1/game/cdk/queryByServerIdPageList`，需带 `game-alias: zsca2` 头），返回**中文奖励 + 精确过期时间戳**，
-  作为优先源先合并，英文站（ucngame / mobi.gg）仅作补充去重。中文奖励比英文站正则提取更准。
+- **GameKee 专属配置**：`BD2_GAMEKEE_ALIAS`（默认 `zsca2`）、`BD2_GAMEKEE_SERVER_ID`（默认 `12`）、
+  `BD2_GAMEKEE_FETCH_ENABLED`（默认 `1`）。
 
 ---
 
@@ -168,9 +165,11 @@ python redeem_cli.py --nickfile players.txt --code BD2025SUMMER --qps 2.5
 | `BD2_REDEEM_QPS` | `2.5` | 每秒兑换请求上限 |
 | `BD2_MAX_RETRIES` | `3` | 单次网络错误重试次数 |
 | `BD2_DB_PATH` | `data/bd2.db` | 数据库路径 |
-| `BD2_FETCH_ENABLED` | `1`（开） | 社区自动抓取总开关，设 `0` 关闭 |
+| `BD2_FETCH_ENABLED` | `1`（开） | GameKee 自动抓取总开关，设 `0` 关闭 |
 | `BD2_FETCH_INTERVAL_MIN` | `1440` | 自动抓取间隔（分钟，默认每天一轮） |
-| `BD2_COUPON_SOURCES` | 见 config | 抓取源列表（JSON 数组），覆盖默认源 |
+| `BD2_GAMEKEE_ALIAS` | `zsca2` | GameKee 游戏别名 |
+| `BD2_GAMEKEE_SERVER_ID` | `12` | GameKee 兑换码 Wiki 条目 ID |
+| `BD2_COUPON_SOURCES` | `[]` | **已停用**，当前只抓 GameKee，设置无效 |
 | `BD2_API_ENDPOINT` / `BD2_APP_ID` | 见 config | 接口地址/应用 ID（若官方变更时改这里） |
 
 ## 七、合规与风险提示
