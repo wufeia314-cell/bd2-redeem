@@ -93,6 +93,10 @@
   .me .who{font-size:15px;font-weight:700;word-break:break-all}
   .me .st-txt{font-size:12px;color:var(--sub);margin-top:2px}
   .me .exp{font-size:11px;color:var(--accent-d);margin-top:3px}
+  .me .cd{font-size:12px;font-weight:700;color:var(--accent);margin-top:3px}
+  .me .cd.expired{color:var(--err)}
+  .me.unbound{background:linear-gradient(135deg,#fff3f3,#fdecec)}
+  .me.unbound .st-txt.warn{color:var(--err)}
 
   /* 礼包码卡片网格 */
   .codes-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
@@ -278,6 +282,31 @@ function fmtMD(iso){
   if(isNaN(d)) return '';
   return `${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
+// 绑定剩余时间：服务端 expires_at 为 UTC 时间串（无时区后缀），解析时按 UTC 处理
+function _parseUTC(iso){
+  if(!iso) return null;
+  const s = /[zZ]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso + 'Z';
+  const d = new Date(s);
+  return isNaN(d) ? null : d;
+}
+// 返回 {text, expired}：还剩多久需要重新绑定；expired=true 表示已过期
+function remainingText(iso){
+  const exp = _parseUTC(iso);
+  if(!exp) return {text:'', expired:false};
+  const diff = exp - new Date();
+  if(diff <= 0){
+    const d = Math.floor(-diff / 86400000);
+    return {text: `已过期 ${d} 天，请重新绑定`, expired:true};
+  }
+  const days = Math.floor(diff / 86400000);
+  const hours = Math.floor((diff % 86400000) / 3600000);
+  const mins = Math.floor((diff % 3600000) / 60000);
+  let t;
+  if(days > 0) t = `还剩 ${days} 天 ${hours} 小时需重新绑定`;
+  else if(hours > 0) t = `还剩 ${hours} 小时 ${mins} 分钟需重新绑定`;
+  else t = `还剩 ${mins} 分钟需重新绑定`;
+  return {text:t, expired:false};
+}
 function daysLeft(iso){
   if(!iso) return '长期有效';
   // 官方/源站给的是 UTC 日期（形如 2026-08-31）。仅含日期时按 UTC 零点解析，
@@ -322,12 +351,33 @@ const ICONS={
 const COPY_SVG='<svg viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="14" rx="2"/><path d="M16 7h3a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-3"/></svg>';
 
 function showMe(nick, player){
-  document.getElementById('meBox').dataset.nick=nick;
-  const exp=player?.expires_at ? `有效期至 ${fmtDate(player.expires_at)}` : '有效期 14 天';
-  document.getElementById('meBox').innerHTML=
-    `<div class="me"><div class="ava">${nick.slice(0,1).toUpperCase()}</div>
-     <div><div class="who">${nick}</div><div class="st-txt">✅ 已绑定 · 新礼包码将自动兑换</div>
-     <div class="exp">📅 ${exp} · 到期前重新绑定可续期</div></div></div>`;
+  const box=document.getElementById('meBox');
+  box.dataset.nick=nick;
+  if(!player){
+    box.dataset.exp='';
+    box.innerHTML=`<div class="me unbound"><div class="ava">${nick.slice(0,1).toUpperCase()}</div>
+      <div><div class="who">${nick}</div>
+      <div class="st-txt warn">未绑定或已过期 · 在上方输入昵称绑定即可自动兑换</div></div></div>`;
+    return;
+  }
+  box.dataset.exp=player.expires_at||'';
+  const exp=fmtDate(player.expires_at);
+  const cd=remainingText(player.expires_at);
+  box.innerHTML=`<div class="me"><div class="ava">${nick.slice(0,1).toUpperCase()}</div>
+     <div><div class="who">${nick}</div>
+     <div class="st-txt">✅ 已绑定 · 新礼包码将自动兑换</div>
+     <div class="exp">📅 有效期至 ${exp}</div>
+     <div class="cd ${cd.expired?'expired':''}" id="bindCountdown">⏳ ${cd.text}</div></div></div>`;
+}
+// 仅刷新倒计时文字（用于查询接口返回玩家信息后）
+function updateCountdown(expIso){
+  const box=document.getElementById('meBox');
+  box.dataset.exp=expIso||'';
+  const el=document.getElementById('bindCountdown');
+  if(!expIso || !el) return;
+  const cd=remainingText(expIso);
+  el.textContent='⏳ '+cd.text;
+  el.className='cd '+(cd.expired?'expired':'');
 }
 
 async function bind(){
@@ -440,6 +490,7 @@ async function queryStatus(){
   try{
     const {ok,data}=await requestJson('/api/status/'+encodeURIComponent(nick),'GET');
     if(!ok){box.innerHTML='<p class="empty">查询失败</p>';return;}
+    if(data.player) showMe(nick, data.player);   // 用真实 expires_at 渲染带倒计时的绑定卡片
     if(!data.records.length){box.innerHTML='<p class="empty">暂无兑换记录，绑定后稍等片刻再来查。</p>';return;}
     let h='';
     const order={success:0,already:0,pending:1,failed:2,invalid:2,expired:2,bad_user:2,error:2};
@@ -457,6 +508,14 @@ async function queryStatus(){
 
 // 回车快捷绑定
 document.getElementById('nickname').addEventListener('keypress', e=>{if(e.key==='Enter') bind();});
+
+// 绑定倒计时每分钟刷新一次
+setInterval(()=>{
+  const box=document.getElementById('meBox');
+  const exp=box.dataset.exp;
+  const el=document.getElementById('bindCountdown');
+  if(exp && el){ const cd=remainingText(exp); el.textContent='⏳ '+cd.text; el.className='cd '+(cd.expired?'expired':''); }
+}, 60000);
 
 // 进入时检查连通性并预载礼包码
 (async function init(){

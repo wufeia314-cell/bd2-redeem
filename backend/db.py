@@ -236,6 +236,15 @@ def get_player_by_nickname(nickname: str) -> dict | None:
         return dict(row) if row else None
 
 
+def get_player_any(nickname: str) -> dict | None:
+    """取玩家行（不限 active/有效期），用于展示绑定倒计时（含已过期）。"""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM players WHERE nickname=?", (nickname.strip(),)
+        ).fetchone()
+        return dict(row) if row else None
+
+
 def list_players(active_only: bool = True) -> list[dict]:
     """列出玩家。默认只返回在有效期内的激活玩家。"""
     q = "SELECT * FROM players"

@@ -210,7 +210,8 @@ def public_codes(show_expired: bool = False):
 def my_status(nickname: str):
     """玩家用游戏昵称查询自己的兑换情况。"""
     records = db.get_player_redemptions(nickname.strip(), limit=1000)
-    return {"nickname": nickname.strip(), "records": records}
+    player = db.get_player_any(nickname.strip())
+    return {"nickname": nickname.strip(), "player": player, "records": records}
 
 
 # ---------------- 管理端 ----------------
