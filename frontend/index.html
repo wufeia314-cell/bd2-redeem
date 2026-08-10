@@ -95,6 +95,9 @@
   .me .exp{font-size:11px;color:var(--accent-d);margin-top:3px}
   .me .cd{font-size:12px;font-weight:700;color:var(--accent);margin-top:3px}
   .me .cd.expired{color:var(--err)}
+  .me .who .unbind{margin-left:8px;font-size:11px;font-weight:400;color:var(--sub);cursor:pointer;
+                  border-bottom:1px dashed currentColor}
+  .me .who .unbind:hover{color:var(--accent)}
   .me.unbound{background:linear-gradient(135deg,#fff3f3,#fdecec)}
   .me.unbound .st-txt.warn{color:var(--err)}
 
@@ -243,6 +246,9 @@ const ST_TEXT = {success:"已兑换",already:"已兑换过",pending:"排队中",
   invalid:"码无效",expired:"已过期",exceeded:"超上限",unavailable:"不可用",
   bad_user:"昵称错误",error:"失败"};
 
+// 绑定的昵称持久化到本地，刷新/重进后自动恢复绑定卡片与倒计时
+const LS_NICK='bd2_nick';
+
 function toast(msg){
   const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
   clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);
@@ -251,7 +257,7 @@ function switchTab(name){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
   document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id==='panel-'+name));
   if(name==='codes') loadCodes();
-  if(name==='mine' && document.getElementById('meBox').dataset.nick) queryStatus();
+  if(name==='mine' && localStorage.getItem(LS_NICK)) queryStatus();
 }
 
 // 健壮请求：先读文本再解析，带超时，出错暴露真实 HTTP 状态码 + 原始片段
@@ -364,7 +370,7 @@ function showMe(nick, player){
   const exp=fmtDate(player.expires_at);
   const cd=remainingText(player.expires_at);
   box.innerHTML=`<div class="me"><div class="ava">${nick.slice(0,1).toUpperCase()}</div>
-     <div><div class="who">${nick}</div>
+     <div><div class="who">${nick}<span class="unbind" onclick="clearBind()">切换昵称</span></div>
      <div class="st-txt">✅ 已绑定 · 新礼包码将自动兑换</div>
      <div class="exp">📅 有效期至 ${exp}</div>
      <div class="cd ${cd.expired?'expired':''}" id="bindCountdown">⏳ ${cd.text}</div></div></div>`;
@@ -380,6 +386,15 @@ function updateCountdown(expIso){
   el.className='cd '+(cd.expired?'expired':'');
 }
 
+// 清除本地记住的昵称（切换账号）：清 localStorage + 重置绑定卡片
+function clearBind(){
+  localStorage.removeItem(LS_NICK);
+  const box=document.getElementById('meBox');
+  box.dataset.nick=''; box.dataset.exp=''; box.innerHTML='';
+  document.getElementById('queryNick').value='';
+  toast('已清除本地绑定，可输入新昵称重新绑定');
+}
+
 async function bind(){
   const nickname=document.getElementById('nickname').value.trim();
   const btn=document.getElementById('bindBtn');
@@ -388,6 +403,8 @@ async function bind(){
   try{
     const {ok,data}=await requestJson('/api/bind','POST',{nickname});
     if(ok){
+      localStorage.setItem(LS_NICK, nickname);
+      document.getElementById('queryNick').value=nickname;
       showMe(nickname, data.player);
       toast(`绑定成功！已排入 ${data.queued_history_codes??0} 个历史礼包码`);
       switchTab('mine');
@@ -481,7 +498,7 @@ async function loadCodes(){
 
 async function queryStatus(){
   const nick=(document.getElementById('queryNick').value.trim()
-            || document.getElementById('meBox').dataset.nick || '');
+            || localStorage.getItem(LS_NICK) || '');
   const box=document.getElementById('statusBox');
   if(!nick){box.innerHTML='';toast('请先输入昵称或绑定');return;}
   document.getElementById('queryNick').value=nick;
@@ -520,6 +537,13 @@ setInterval(()=>{
 // 进入时检查连通性并预载礼包码
 (async function init(){
   try{ await requestJson('/api/health','GET'); }catch(e){ /* 静默 */ }
+  // 若本地记住了昵称，预填输入框并静默恢复绑定卡片与倒计时（刷新/重进后仍在）
+  const saved=localStorage.getItem(LS_NICK);
+  if(saved){
+    document.getElementById('nickname').value=saved;
+    document.getElementById('queryNick').value=saved;
+    queryStatus();
+  }
   loadCodes();
 })();
 </script>
