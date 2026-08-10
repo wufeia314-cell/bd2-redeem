@@ -398,14 +398,23 @@ def admin_players():
 
 
 # ---------------- 前端静态页 ----------------
+# 注意：HTML 必须 no-cache。否则手机浏览器会长期缓存旧版 index.html，
+# 表现为「桌面已更新的功能，手机端看不到 / 卡在旧逻辑」（曾出现的真实问题）。
+_NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate"}
+
+
 @app.get("/")
 def index():
-    return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+    return FileResponse(
+        os.path.join(FRONTEND_DIR, "index.html"), headers=_NO_CACHE
+    )
 
 
 @app.get("/admin")
 def admin_page():
-    return FileResponse(os.path.join(FRONTEND_DIR, "admin.html"))
+    return FileResponse(
+        os.path.join(FRONTEND_DIR, "admin.html"), headers=_NO_CACHE
+    )
 
 
 # 其它静态资源（如有）

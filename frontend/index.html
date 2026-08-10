@@ -18,21 +18,24 @@
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;padding:0}
-  body{
-    background:
-      radial-gradient(120% 55% at 50% -12%, rgba(255,246,234,.82) 0%, transparent 55%),
-      linear-gradient(180deg,rgba(246,242,236,.78) 0%,rgba(239,231,221,.78) 100%);
-    background-attachment:fixed;
+  /* 背景方案（移动端兼容优先）：
+     body 建立层叠上下文(position:relative + z-index:0)，背景图放在 ::before 最底层(z-index:-1)，
+     暖色半透明罩放在 ::after 紧贴内容之下——这样无论 iOS Safari 还是 Android 都稳定透出背景图，
+     且负 z-index 不会再被父级背景盖死（旧方案 .bg-layer 正是因此手机上完全不可见）。 */
+  body{position:relative;z-index:0;
     color:var(--txt);line-height:1.55;
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
-    -webkit-font-smoothing:antialiased;
-  }
+    -webkit-font-smoothing:antialiased;}
+  html{background:#f6f2ec}
   /* 背景图：淡淡、半透明、带轻微模糊，确保不抢内容；pointer-events:none 不遮挡点击 */
-  .bg-layer{
-    position:fixed;inset:0;z-index:-1;pointer-events:none;
+  body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
     background:url('/static/bg.webp') center/cover no-repeat;
-    opacity:.20;filter:blur(1.5px);transform:scale(1.05)
-  }
+    opacity:.22;filter:blur(2px);transform:scale(1.06)}
+  /* 暖色半透明罩：叠在背景图之上、内容之下，既保证文字区域对比度，又让图片若隐若现 */
+  body::after{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+    background:
+      radial-gradient(120% 55% at 50% -12%, rgba(255,246,234,.42) 0%, transparent 55%),
+      linear-gradient(180deg, rgba(246,242,236,.50) 0%, rgba(239,231,221,.60) 100%)}
   .app{max-width:480px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;
        padding:0 0 calc(76px + env(safe-area-inset-bottom));position:relative}
 
@@ -152,7 +155,8 @@
                    display:flex;align-items:center;justify-content:center;padding:0;transition:background .15s}
   .code-card .copy:active{background:rgba(154,94,44,.2)}
   .code-card .copy svg{width:16px;height:16px;fill:var(--accent)}
-  .empty{display:block;color:var(--sub);font-size:13px;padding:14px 0;text-align:center}
+  .empty{display:block;color:var(--sub);font-size:13px;padding:14px 0;text-align:center;line-height:1.7}
+  .empty a,.retry{color:var(--accent);font-weight:700;text-decoration:none;border-bottom:1px dashed currentColor;cursor:pointer}
 
   /* 记录列表 */
   .rec{display:flex;align-items:center;justify-content:space-between;padding:13px 4px;
@@ -202,7 +206,6 @@
 </style>
 </head>
 <body>
-<div class="bg-layer" aria-hidden="true"></div>
 <div class="app">
   <div class="hero">
     <span class="badge">BD2 · 自动兑换</span>
@@ -557,15 +560,28 @@ function renderCodes(list, participants, playerActive){
   }).join('');
 }
 
+function failHtml(msg){
+  return `<span class="empty">${esc(msg)}，<a class="retry" href="javascript:loadCodes()">点此重试</a></span>`;
+}
+
 async function loadCodes(){
   const box=document.getElementById('codes');
   const nick=localStorage.getItem(LS_NICK)||'';
   const url=nick ? '/api/codes?nickname='+encodeURIComponent(nick) : '/api/codes';
+  box.innerHTML='<span class="empty">加载中…</span>';
   try{
     const {ok,data}=await requestJson(url,'GET');
-    if(!ok){box.innerHTML='<span class="empty">加载失败</span>';return;}
+    if(!ok){box.innerHTML=failHtml('加载失败');return;}
+    loadCodes._retried=false;   // 成功后清除自动重试标记
     renderCodes(data.codes||[], data.participants, data.player_active);
-  }catch(e){box.innerHTML='<span class="empty">加载失败：'+e.message+'</span>';}
+  }catch(e){
+    box.innerHTML=failHtml('加载失败：'+e.message);
+    // 免费实例冷启动首请求易超时：自动重试一次，避免手机端「一直加载中」
+    if(!loadCodes._retried){
+      loadCodes._retried=true;
+      setTimeout(loadCodes, 5000);
+    }
+  }
 }
 
 async function queryStatus(){
@@ -582,7 +598,7 @@ async function queryStatus(){
       const tip = status===422 ? '昵称格式不对，请重新输入'
                 : status>=500  ? '服务暂时不可用，请稍后重试'
                 : (data && data.detail) || `查询失败（HTTP ${status}）`;
-      box.innerHTML='<p class="empty">'+esc(tip)+'</p>';
+      box.innerHTML='<p class="empty">'+esc(tip)+'，<a class="retry" href="javascript:queryStatus()">重试</a></p>';
       return;
     }
     if(data.player) showMe(nick, data.player);   // 用真实 expires_at 渲染带倒计时的绑定卡片
@@ -604,7 +620,7 @@ async function queryStatus(){
     }
     const succ=data.records.filter(r=>r.status==='success'||r.status==='already').length;
     box.innerHTML=`<p class="desc" style="margin:4px 0 8px">共 ${data.records.length} 条 · 成功 ${succ} 条</p>`+h;
-  }catch(e){box.innerHTML='<p class="empty">查询失败：'+e.message+'</p>';}
+  }catch(e){box.innerHTML='<p class="empty">查询失败：'+esc(e.message)+'，<a class="retry" href="javascript:queryStatus()">重试</a></p>';}
 }
 
 // 回车快捷绑定
