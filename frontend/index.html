@@ -250,9 +250,9 @@ const LS_NICK='bd2_nick';
 // 防御 XSS：所有插入 innerHTML 的外部/用户派生内容都必须先过 esc()
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
-function toast(msg){
+function toast(msg, ms){
   const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
-  clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);
+  clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'), ms||2200);
 }
 function switchTab(name){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
@@ -400,19 +400,44 @@ async function bind(){
   const nickname=document.getElementById('nickname').value.trim();
   const btn=document.getElementById('bindBtn');
   if(!nickname){toast('请输入游戏昵称');return;}
-  btn.disabled=true;btn.textContent='绑定中…';
+  btn.disabled=true;btn.textContent='核对昵称中…';
   try{
-    const {ok,data}=await requestJson('/api/bind','POST',{nickname});
-    if(ok){
-      localStorage.setItem(LS_NICK, nickname);
-      document.getElementById('queryNick').value=nickname;
-      showMe(nickname, data.player);
-      toast(`绑定成功！已排入 ${data.queued_history_codes??0} 个历史礼包码`);
-      switchTab('mine');
-      queryStatus();
-      loadCodes();
-    }else{toast('绑定失败：'+(data.detail||JSON.stringify(data)));}
-  }catch(e){toast('绑定出错：'+e.message);}
+    const {status,ok,data}=await requestJson('/api/bind','POST',{nickname});
+    if(!ok){
+      // 分情况给出可操作的提示，而不是笼统的「绑定失败」
+      if(status===404){
+        toast('❌ '+(data.detail||`游戏内找不到昵称「${nickname}」，请核对后重试`), 6000);
+      }else if(status===429){
+        toast('⏳ 绑定太频繁，请稍等片刻再试', 5000);
+      }else if(status===422){
+        toast('❌ 昵称格式不对：长度需为 1–24 个字符', 5000);
+      }else{
+        toast('绑定失败：'+(data.detail||JSON.stringify(data)), 5000);
+      }
+      btn.disabled=false;btn.textContent='立即绑定';
+      return;
+    }
+    localStorage.setItem(LS_NICK, nickname);
+    document.getElementById('queryNick').value=nickname;
+    showMe(nickname, data.player);
+
+    // 区分「首次绑定 / 续期」×「有无新排队的码」，四种情况分别说人话
+    const n=data.queued_history_codes??0;
+    let msg;
+    if(data.is_new){
+      msg = n>0 ? `✅ 绑定成功！已排入 ${n} 个礼包码，正在后台自动兑换`
+                : '✅ 绑定成功！当前暂无可兑换的礼包码，出新码会自动帮你兑换';
+    }else{
+      msg = n>0 ? `✅ 已续期！新增 ${n} 个礼包码待兑换`
+                : '✅ 已续期！礼包码此前都已排过队，可在「我的」查看兑换结果';
+    }
+    if(data.nickname_verified===false) msg+='（昵称未能向官方核实，若兑换失败请检查昵称）';
+    toast(msg, 5000);
+
+    switchTab('mine');
+    queryStatus();
+    loadCodes();
+  }catch(e){toast('绑定出错：'+e.message, 5000);}
   btn.disabled=false;btn.textContent='立即绑定';
 }
 
@@ -518,10 +543,22 @@ async function queryStatus(){
   if(!document.getElementById('meBox').dataset.nick) showMe(nick, null);
   box.innerHTML='<p class="empty">查询中…</p>';
   try{
-    const {ok,data}=await requestJson('/api/status?nickname='+encodeURIComponent(nick),'GET');
-    if(!ok){box.innerHTML='<p class="empty">查询失败</p>';return;}
+    const {status,ok,data}=await requestJson('/api/status?nickname='+encodeURIComponent(nick),'GET');
+    if(!ok){
+      const tip = status===422 ? '昵称格式不对，请重新输入'
+                : status>=500  ? '服务暂时不可用，请稍后重试'
+                : (data && data.detail) || `查询失败（HTTP ${status}）`;
+      box.innerHTML='<p class="empty">'+esc(tip)+'</p>';
+      return;
+    }
     if(data.player) showMe(nick, data.player);   // 用真实 expires_at 渲染带倒计时的绑定卡片
-    if(!data.records.length){box.innerHTML='<p class="empty">暂无兑换记录，绑定后稍等片刻再来查。</p>';return;}
+    if(!data.records.length){
+      // 没记录有两种原因，提示要分开：压根没绑过 vs 绑了但还在排队
+      box.innerHTML = data.player
+        ? '<p class="empty">已绑定，兑换任务仍在后台排队中，稍等片刻再来查。</p>'
+        : `<p class="empty">昵称「${esc(nick)}」尚未绑定过，请先在上方「绑定」页填写昵称完成绑定。</p>`;
+      return;
+    }
     let h='';
     const order={success:0,already:0,pending:1,failed:2,invalid:2,expired:2,bad_user:2,error:2};
     data.records.sort((a,b)=>(order[a.status]??9)-(order[b.status]??9));

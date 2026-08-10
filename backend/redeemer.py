@@ -106,6 +106,33 @@ def redeem_once(nickname: str, code: str, client: httpx.Client | None = None) ->
             client.close()
 
 
+# 昵称探测专用的假码。官方接口「先校验用户、再校验礼包码」——
+# 实测：不存在的昵称配任意乱码（哪怕只有一个字符）都直接返回 IncorrectUser，压根不看码。
+# 因此用一个绝无可能存在的码即可判断昵称真伪，且不消耗任何真实礼包码。
+NICKNAME_PROBE_CODE = "BD2NICKNAMEPROBE000"
+
+
+def verify_nickname(nickname: str, client: httpx.Client | None = None) -> tuple[bool | None, str]:
+    """向官方探测游戏昵称是否存在。
+
+    返回 (exists, message):
+        True  → 昵称存在（官方已走到校验礼包码那一步）
+        False → 昵称不存在（官方返回 IncorrectUser）
+        None  → 无法确定（网络/接口异常），调用方应放行，别因此拦住玩家绑定
+    """
+    nickname = (nickname or "").strip()
+    if not nickname:
+        return False, "游戏昵称不能为空"
+    # 只探一次，不做重试退避——绑定接口要尽量快，网络不好时宁可降级放行
+    r = redeem_once(nickname, NICKNAME_PROBE_CODE, client=client)
+    if r.status == "bad_user":
+        return False, r.message
+    if r.status == "network_error":
+        return None, r.message
+    # 能返回「码无效/已过期/已使用」等，说明用户这一关已经过了
+    return True, ""
+
+
 def redeem_with_retry(nickname: str, code: str, client: httpx.Client | None = None) -> RedeemResult:
     """带网络重试的兑换。业务失败不重试。"""
     last = RedeemResult("network_error", "未执行")

@@ -232,6 +232,8 @@ def add_player(nickname: str, note: str = "") -> dict:
         # 仅在真正新增玩家时累加参与者计数；已有玩家重新绑定（续期）不重复累加
         if is_new:
             _inc_participants(conn)
+        # 派生字段（非表列）：供接口区分「首次绑定」与「续期」，以便给出不同提示
+        row["_is_new"] = is_new
         return row
 
 

@@ -27,6 +27,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 import config
 import db
 import fetcher
+import redeemer
 import worker
 
 
@@ -201,9 +202,28 @@ def bind(req: BindReq, request: Request):
     """玩家用游戏昵称绑定。绑定后自动为其补齐所有历史激活礼包码，有效期 14 天。"""
     if not _bind_allowed(request):
         raise HTTPException(status_code=429, detail="绑定过于频繁，请稍后再试")
-    player = db.add_player(req.nickname, req.note)
+
+    nickname = (req.nickname or "").strip()
+    # 先向官方核实昵称是否真实存在：用假码探测，不消耗任何真实礼包码。
+    # 昵称不存在时直接拦下，避免玩家绑了个错名字、之后所有兑换全部失败还不知道为什么。
+    exists, why = redeemer.verify_nickname(nickname)
+    if exists is False:
+        raise HTTPException(
+            status_code=404,
+            detail=f"游戏内找不到昵称「{nickname}」，请核对后重试（注意区分大小写、空格与特殊符号）",
+        )
+
+    player = db.add_player(nickname, req.note)
+    is_new = bool(player.pop("_is_new", True))
     queued = db.enqueue_all_codes_for_player(player["id"])
-    return {"ok": True, "player": player, "queued_history_codes": queued, "participants": db.get_participant_count()}
+    return {
+        "ok": True,
+        "player": player,
+        "is_new": is_new,                     # True=首次绑定，False=续期
+        "nickname_verified": exists is True,  # False 表示核实时网络异常，已降级放行
+        "queued_history_codes": queued,
+        "participants": db.get_participant_count(),
+    }
 
 
 @app.get("/api/codes")
