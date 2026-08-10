@@ -123,6 +123,8 @@
   .code-card .status.success{background:var(--ok-bg);color:var(--ok)}
   .code-card .status.pending{background:var(--pending-bg);color:var(--pending)}
   .code-card .status.failed{background:var(--err-bg);color:var(--err)}
+  /* 绑定已过期：任务不会再被后台执行，必须与「兑换中」区分开，否则是在骗玩家干等 */
+  .code-card .status.stale{background:#fff4e5;color:#b26a00}
   .code-card .body{display:flex;align-items:center;gap:9px}
   .code-card .icon{width:40px;height:40px;border-radius:11px;background:linear-gradient(135deg,var(--chip),var(--chip-l));
                    display:flex;align-items:center;justify-content:center;flex:0 0 40px}
@@ -150,7 +152,9 @@
   .tag{font-size:12px;font-weight:700;padding:4px 11px;border-radius:20px;white-space:nowrap}
   .tag.success,.tag.already{background:var(--ok-bg);color:var(--ok)}
   .tag.pending{background:var(--pending-bg);color:var(--pending)}
-  .tag.failed,.tag.invalid,.tag.expired,.tag.bad_user,.tag.error{background:var(--err-bg);color:var(--err)}
+  .tag.failed,.tag.invalid,.tag.expired,.tag.bad_user,.tag.error,
+  .tag.exceeded,.tag.unavailable{background:var(--err-bg);color:var(--err)}
+  .tag.canceled{background:#f1f1f1;color:#9a9a9a}
 
   /* 我的记录面板里的输入框与按钮 */
   #queryNick{width:100%;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:15px;
@@ -242,7 +246,7 @@
 <script>
 const ST_TEXT = {success:"已兑换",already:"已兑换过",pending:"排队中",failed:"失败",
   invalid:"码无效",expired:"已过期",exceeded:"超上限",unavailable:"不可用",
-  bad_user:"昵称错误",error:"失败"};
+  bad_user:"昵称错误",error:"失败",canceled:"已取消"};
 
 // 绑定的昵称持久化到本地，刷新/重进后自动恢复绑定卡片与倒计时
 const LS_NICK='bd2_nick';
@@ -393,6 +397,10 @@ function clearBind(){
   const box=document.getElementById('meBox');
   box.dataset.nick=''; box.dataset.exp=''; box.innerHTML='';
   document.getElementById('queryNick').value='';
+  document.getElementById('nickname').value='';
+  document.getElementById('statusBox').innerHTML='';
+  // 必须重新拉一次：否则码卡片右上角还挂着上一个昵称的「已兑换」，看着像新昵称已兑换过
+  loadCodes();
   toast('已清除本地绑定，可输入新昵称重新绑定');
 }
 
@@ -424,9 +432,14 @@ async function bind(){
     // 区分「首次绑定 / 续期」×「有无新排队的码」，四种情况分别说人话
     const n=data.queued_history_codes??0;
     let msg;
+    const r=data.retried_failed_codes??0;
     if(data.is_new){
       msg = n>0 ? `✅ 绑定成功！已排入 ${n} 个礼包码，正在后台自动兑换`
                 : '✅ 绑定成功！当前暂无可兑换的礼包码，出新码会自动帮你兑换';
+    }else if(n>0 && r>0){
+      msg = `✅ 已续期！新增 ${n} 个礼包码，另有 ${r} 个此前失败的码已重新排队`;
+    }else if(r>0){
+      msg = `✅ 已续期！${r} 个此前失败的礼包码已重新排队重试`;
     }else{
       msg = n>0 ? `✅ 已续期！新增 ${n} 个礼包码待兑换`
                 : '✅ 已续期！礼包码此前都已排过队，可在「我的」查看兑换结果';
@@ -434,9 +447,12 @@ async function bind(){
     if(data.nickname_verified===false) msg+='（昵称未能向官方核实，若兑换失败请检查昵称）';
     toast(msg, 5000);
 
-    switchTab('mine');
-    queryStatus();
+    switchTab('mine');   // 内部已会触发 queryStatus，不重复调用
     loadCodes();
+    // 后台兑换是异步的，绑定成功的瞬间几乎全是 pending。延迟回刷一次，
+    // 让玩家不用手动刷新就能看到真实结果（QPS 2.5，十来个码通常几秒内跑完）。
+    clearTimeout(window._afterBindTimer);
+    window._afterBindTimer=setTimeout(()=>{ queryStatus(); loadCodes(); }, 6000);
   }catch(e){toast('绑定出错：'+e.message, 5000);}
   btn.disabled=false;btn.textContent='立即绑定';
 }
@@ -465,7 +481,7 @@ function fallbackCopy(text, ok, fail){
   }catch(e){ fail(); }
 }
 
-function renderCodes(list, participants){
+function renderCodes(list, participants, playerActive){
   const box=document.getElementById('codes');
   const countBox=document.getElementById('playerCount');
   countBox.textContent=`已有${(participants||0).toLocaleString()}人参与`;
@@ -484,8 +500,14 @@ function renderCodes(list, participants){
       // 若当前绑定昵称对该码有兑换记录，优先展示个人状态
       const my=c.my_status;
       if(my==='success' || my==='already'){ statusCls='success'; statusText='已兑换'; }
-      else if(my==='pending' || my==='network_error'){ statusCls='pending'; statusText='兑换中'; }
+      else if(my==='pending' || my==='network_error'){
+        // 绑定过期后后台不会再执行这些任务，继续显示「兑换中」等于让玩家白等
+        if(playerActive===false){ statusCls='stale'; statusText='待重新绑定'; }
+        else { statusCls='pending'; statusText='兑换中'; }
+      }
+      else if(my==='canceled'){ statusCls='dead'; statusText='已取消'; }
       else if(my){ statusCls='failed'; statusText={bad_user:'昵称错误',error:'兑换失败'}[my]||'兑换失败'; }
+      else if(playerActive===false){ statusCls='stale'; statusText='待重新绑定'; }
       else { const s=c.status||'active'; statusCls=s;
              statusText={active:'待兑换',expired:'已过期',inactive:'已停用'}[s]||'待兑换'; }
       exp=daysLeft(c.expires_at);
@@ -530,7 +552,7 @@ async function loadCodes(){
   try{
     const {ok,data}=await requestJson(url,'GET');
     if(!ok){box.innerHTML='<span class="empty">加载失败</span>';return;}
-    renderCodes(data.codes||[], data.participants);
+    renderCodes(data.codes||[], data.participants, data.player_active);
   }catch(e){box.innerHTML='<span class="empty">加载失败：'+e.message+'</span>';}
 }
 

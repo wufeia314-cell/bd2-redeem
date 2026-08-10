@@ -21,6 +21,13 @@ from redeemer import redeem_with_retry
 # 网络错误累计尝试超过此值，判定为 failed（避免死循环）
 MAX_JOB_ATTEMPTS = 6
 
+# 连续这么多个任务都网络失败，就认定是官方接口整体故障而非个别任务的问题，
+# 暂停一段时间再继续。否则单线程会拿整个队列去硬撞一个挂掉的接口：
+# 每个任务内部还要重试 MAX_RETRIES 次并指数退避，几十个任务能把 worker 堵死几十分钟，
+# 期间新入库的礼包码完全排不上队。
+NET_ERROR_CIRCUIT = 5
+CIRCUIT_COOLDOWN = 60.0
+
 _stop = threading.Event()
 _thread: threading.Thread | None = None
 
@@ -43,6 +50,7 @@ def _run_loop() -> None:
                 _stop.wait(3.0)  # 空闲时轻量轮询
                 continue
 
+            consecutive_net_err = 0
             for job in jobs:
                 if _stop.is_set():
                     break
@@ -53,6 +61,7 @@ def _run_loop() -> None:
                 result = redeem_with_retry(user_id, job["code"], client=client)
 
                 if result.status == "network_error":
+                    consecutive_net_err += 1
                     attempts = job["attempts"] + 1
                     if attempts >= MAX_JOB_ATTEMPTS:
                         db.update_redemption(
@@ -66,6 +75,7 @@ def _run_loop() -> None:
                             f"网络失败重试中：{result.message}",
                         )
                 else:
+                    consecutive_net_err = 0
                     db.update_redemption(job["redemption_id"], result.status, result.message)
                     # 码级错误（与玩家无关，纯粹是码本身问题）→ 回写 codes 真实状态，
                     # 前端据此显示真实状态，并不再徒劳地反复兑换该码
@@ -74,6 +84,13 @@ def _run_loop() -> None:
                             db.mark_code_official_status(job["code_id"], result.status)
                         except Exception as exc:  # noqa: BLE001
                             print(f"[worker] 标记码官方状态出错: {exc}")
+
+                # 熔断：官方接口疑似整体故障，放弃本轮剩余任务，冷却后重新取队列
+                if consecutive_net_err >= NET_ERROR_CIRCUIT:
+                    print(f"[worker] 连续 {consecutive_net_err} 次网络失败，疑似官方接口故障，"
+                          f"暂停 {CIRCUIT_COOLDOWN:.0f} 秒后重试")
+                    _stop.wait(CIRCUIT_COOLDOWN)
+                    break
 
                 # 限速：保证两次请求间隔 >= interval
                 elapsed = time.monotonic() - t0

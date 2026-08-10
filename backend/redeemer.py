@@ -69,11 +69,19 @@ def _parse_response(http_status: int, body: dict) -> RedeemResult:
     return RedeemResult(status, msg, body, http_status)
 
 
-def redeem_once(nickname: str, code: str, client: httpx.Client | None = None) -> RedeemResult:
+def redeem_once(
+    nickname: str,
+    code: str,
+    client: httpx.Client | None = None,
+    timeout: float | None = None,
+) -> RedeemResult:
     """同步执行一次兑换。返回归一化结果。
 
     仅在网络异常 / 5xx 时返回 network_error（调用方可据此重试）；
     业务失败（无效码、过期等）均为最终态。
+
+    timeout 仅在未传入 client（本函数自建连接）时生效，用于让「昵称探测」这类
+    卡在用户面前的同步调用能更快失败，而不是让玩家干等默认超时。
     """
     payload = {"appId": config.BD2_APP_ID, "userId": nickname.strip(), "code": code.strip()}
     headers = {
@@ -86,7 +94,7 @@ def redeem_once(nickname: str, code: str, client: httpx.Client | None = None) ->
 
     own_client = client is None
     if own_client:
-        client = httpx.Client(timeout=config.REQUEST_TIMEOUT)
+        client = httpx.Client(timeout=timeout or config.REQUEST_TIMEOUT)
     try:
         resp = client.post(config.BD2_API_ENDPOINT, json=payload, headers=headers)
         # 5xx 视为可重试的临时故障
@@ -111,6 +119,10 @@ def redeem_once(nickname: str, code: str, client: httpx.Client | None = None) ->
 # 因此用一个绝无可能存在的码即可判断昵称真伪，且不消耗任何真实礼包码。
 NICKNAME_PROBE_CODE = "BD2NICKNAMEPROBE000"
 
+# 探测超时刻意短于兑换超时：这个请求发生在玩家点「绑定」之后、页面卡住等待期间，
+# 官方慢的时候宁可尽快降级放行，也不要让人对着按钮干等十几秒。
+NICKNAME_PROBE_TIMEOUT = 8.0
+
 
 def verify_nickname(nickname: str, client: httpx.Client | None = None) -> tuple[bool | None, str]:
     """向官方探测游戏昵称是否存在。
@@ -124,7 +136,7 @@ def verify_nickname(nickname: str, client: httpx.Client | None = None) -> tuple[
     if not nickname:
         return False, "游戏昵称不能为空"
     # 只探一次，不做重试退避——绑定接口要尽量快，网络不好时宁可降级放行
-    r = redeem_once(nickname, NICKNAME_PROBE_CODE, client=client)
+    r = redeem_once(nickname, NICKNAME_PROBE_CODE, client=client, timeout=NICKNAME_PROBE_TIMEOUT)
     if r.status == "bad_user":
         return False, r.message
     if r.status == "network_error":

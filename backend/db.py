@@ -540,24 +540,85 @@ def enqueue_all_codes_for_player(player_id: int) -> int:
 
 
 def expire_stale_pending() -> int:
-    """把已无法兑换的礼包码对应的残留 pending 任务标记为 expired，避免无谓排队/堆积。
-    无法兑换的情形：① 已过期；② 已被官方实测判为失效(invalid/expired/exceeded/unavailable)。
+    """把已无法兑换的礼包码对应的残留 pending 任务标记为 canceled，避免无谓排队/堆积。
+
+    无法兑换的情形：
+      ① 码被管理员停用(active=0)；② 码已过期；
+      ③ 已被官方实测判为失效(invalid/expired/exceeded/unavailable)。
+
+    注意用独立状态 'canceled' 而非 'expired'：'expired' 是官方判定「码已过期」的
+    真实兑换结果，两者语义不同；且独立状态才能在码恢复可用时精确找回这些记录
+    （见 revive_canceled_for_code），否则 INSERT OR IGNORE 会让它们永远无法回到队列。
     返回清理条数。"""
     with _lock, get_conn() as conn:
         cur = conn.execute(
             """
-            UPDATE redemptions SET status='expired', message='礼包码已失效/过期，已取消兑换', updated_at=?
+            UPDATE redemptions SET status='canceled', message='礼包码已失效/停用，已取消兑换', updated_at=?
             WHERE status='pending'
               AND code_id IN (
                   SELECT id FROM codes
-                  WHERE active=1
-                    AND (
-                      (expires_at IS NOT NULL AND expires_at <= datetime('now'))
-                      OR official_status IN ('expired','invalid','exceeded','unavailable')
-                    )
+                  WHERE active=0
+                     OR (expires_at IS NOT NULL AND expires_at <= datetime('now'))
+                     OR official_status IN ('expired','invalid','exceeded','unavailable')
               )
             """,
             (_now(),),
+        )
+        return cur.rowcount
+
+
+# 「可通过重新绑定自救」的失败态：问题出在玩家侧或网络侧，换个时间/改对昵称就可能成功。
+# 不含 success/already（已完成，重试无意义且会白白消耗官方请求），
+# 也不含 invalid/expired/exceeded/unavailable（码本身的问题，对谁都一样，重试必然再失败）。
+_RETRIABLE_STATUSES = ("failed", "bad_user", "error")
+
+
+def reset_retriable_redemptions(player_id: int) -> int:
+    """把该玩家「可重试的失败记录」重置为 pending，让「重新绑定」成为玩家的自救手段。
+
+    背景：enqueue_all_codes_for_player 用的是 INSERT OR IGNORE，已存在的记录不会被
+    改动。因此玩家一旦因网络抖动被判 failed、或因昵称填错被判 bad_user，重新绑定
+    也不会重跑，该码对他永远停在失败态且毫无补救办法。
+
+    只重置那些「码本身仍可兑换」的记录，避免把注定失败的任务重新塞回队列。
+    返回重置条数。"""
+    placeholders = ",".join("?" for _ in _RETRIABLE_STATUSES)
+    with _lock, get_conn() as conn:
+        cur = conn.execute(
+            f"""
+            UPDATE redemptions
+               SET status='pending', message='重新绑定后自动重试', updated_at=?
+             WHERE player_id=?
+               AND status IN ({placeholders})
+               AND code_id IN (
+                   SELECT id FROM codes
+                    WHERE active=1
+                      AND (expires_at IS NULL OR expires_at > datetime('now'))
+                      AND (official_status IS NULL OR official_status IN ('pending','valid'))
+               )
+            """,
+            (_now(), player_id, *_RETRIABLE_STATUSES),
+        )
+        return cur.rowcount
+
+
+def revive_canceled_for_code(code_id: int) -> int:
+    """礼包码恢复可用时（管理员重新激活/重置官方状态/延长有效期），把此前因该码失效
+    而被取消的任务放回队列。否则 INSERT OR IGNORE 会导致这些玩家永远漏兑此码。
+    返回恢复条数。"""
+    with _lock, get_conn() as conn:
+        code_ok = conn.execute(
+            "SELECT 1 FROM codes WHERE id=? AND active=1 "
+            "AND (expires_at IS NULL OR expires_at > datetime('now')) "
+            "AND (official_status IS NULL OR official_status IN ('pending','valid'))",
+            (code_id,),
+        ).fetchone()
+        if not code_ok:
+            return 0
+        cur = conn.execute(
+            "UPDATE redemptions SET status='pending', message='礼包码已恢复，重新排队', updated_at=? "
+            "WHERE code_id=? AND status='canceled'",
+            (_now(), code_id),
         )
         return cur.rowcount
 

@@ -110,7 +110,8 @@
 
 <script>
 const ST_TEXT={success:"成功",already:"已兑换过",pending:"排队中",failed:"失败",
-  invalid:"码无效",expired:"已过期",exceeded:"超上限",unavailable:"不可用",bad_user:"昵称错误",error:"失败"};
+  invalid:"码无效",expired:"已过期",exceeded:"超上限",unavailable:"不可用",bad_user:"昵称错误",
+  error:"失败",canceled:"已取消"};
 function token(){return document.getElementById('token').value.trim();}
 function H(){return {'Content-Type':'application/json','X-Admin-Token':token()};}
 

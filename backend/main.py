@@ -61,7 +61,43 @@ def _bind_allowed(request: Request) -> bool:
             return False
         hits.append(now)
         _bind_hits[ip] = hits
+        # 顺带回收长期不活跃 IP 的条目，避免字典无上限增长（长跑进程的内存泄漏点）
+        if len(_bind_hits) > 5000:
+            for k in [k for k, v in _bind_hits.items() if not v or now - v[-1] > _BIND_WINDOW]:
+                _bind_hits.pop(k, None)
         return True
+
+
+# ---------------- 昵称核实结果缓存 ----------------
+# 绑定时会向官方发一次「假码探测」请求。若不缓存，同一玩家反复绑定/续期都会打一次官方，
+# 大量无效码请求既浪费又可能触发官方风控封掉本服务出口 IP（那会导致所有人都兑换不了）。
+# 存在的昵称缓存久一些；不存在的缓存短一些（玩家可能刚改名或刚建号，要给他很快重试的机会）。
+_NICK_TTL_OK = 6 * 3600.0
+_NICK_TTL_BAD = 600.0
+_nick_cache: dict[str, tuple[bool, float]] = {}
+_nick_lock = threading.Lock()
+
+
+def _verify_nickname_cached(nickname: str) -> tuple[bool | None, str]:
+    """带缓存的昵称核实。返回值语义同 redeemer.verify_nickname。
+
+    网络异常（None）不写缓存——那不是结论，下次应重新探测。
+    """
+    now = time.monotonic()
+    with _nick_lock:
+        hit = _nick_cache.get(nickname)
+        if hit and now < hit[1]:
+            return hit[0], "（命中本地缓存）"
+
+    exists, why = redeemer.verify_nickname(nickname)
+
+    if exists is not None:
+        with _nick_lock:
+            _nick_cache[nickname] = (exists, now + (_NICK_TTL_OK if exists else _NICK_TTL_BAD))
+            if len(_nick_cache) > 5000:  # 简单容量保护
+                for k in [k for k, v in _nick_cache.items() if now >= v[1]]:
+                    _nick_cache.pop(k, None)
+    return exists, why
 
 
 # ---------------- 社区自动抓取调度（后台线程）----------------
@@ -206,7 +242,7 @@ def bind(req: BindReq, request: Request):
     nickname = (req.nickname or "").strip()
     # 先向官方核实昵称是否真实存在：用假码探测，不消耗任何真实礼包码。
     # 昵称不存在时直接拦下，避免玩家绑了个错名字、之后所有兑换全部失败还不知道为什么。
-    exists, why = redeemer.verify_nickname(nickname)
+    exists, why = _verify_nickname_cached(nickname)
     if exists is False:
         raise HTTPException(
             status_code=404,
@@ -215,6 +251,9 @@ def bind(req: BindReq, request: Request):
 
     player = db.add_player(nickname, req.note)
     is_new = bool(player.pop("_is_new", True))
+    # 「重新绑定」应当是玩家唯一的自救手段：把此前因网络故障/昵称填错而失败的记录放回队列。
+    # 不做这一步的话，INSERT OR IGNORE 会让那些记录永远停在失败态。
+    retried = 0 if is_new else db.reset_retriable_redemptions(player["id"])
     queued = db.enqueue_all_codes_for_player(player["id"])
     return {
         "ok": True,
@@ -222,6 +261,7 @@ def bind(req: BindReq, request: Request):
         "is_new": is_new,                     # True=首次绑定，False=续期
         "nickname_verified": exists is True,  # False 表示核实时网络异常，已降级放行
         "queued_history_codes": queued,
+        "retried_failed_codes": retried,      # 续期时重新排队的历史失败码数
         "participants": db.get_participant_count(),
     }
 
@@ -231,11 +271,21 @@ def public_codes(nickname: str | None = None):
     """公开：查看当前礼包码列表（始终隐藏过期/失效码）和参与者总数（基数+实际绑定）。
     若提供 nickname，则在每个码里附加 my_status（该昵称对此码的兑换状态）。"""
     codes = db.list_codes(active_only=True, include_expired=False)
+    # None = 未提供昵称；True = 绑定有效；False = 从未绑定或绑定已过期
+    player_active = None
     if nickname and nickname.strip():
-        my_statuses = db.get_player_code_statuses(nickname.strip())
+        nk = nickname.strip()
+        my_statuses = db.get_player_code_statuses(nk)
         for c in codes:
             c["my_status"] = my_statuses.get(c["code"])
-    return {"codes": codes, "participants": db.get_participant_count()}
+        # 绑定过期的玩家不会再被 worker 取任务（get_pending_jobs 过滤过期玩家），
+        # 其残留的 pending 若仍显示「兑换中」就是在骗人，前端需据此改口为「待重新绑定」。
+        player_active = db.get_player_by_nickname(nk) is not None
+    return {
+        "codes": codes,
+        "participants": db.get_participant_count(),
+        "player_active": player_active,
+    }
 
 
 @app.get("/api/status")
@@ -291,7 +341,11 @@ def admin_update_code(code: str, req: CodeUpdateReq):
     row = db.update_code(code, **payload)
     if not row:
         raise HTTPException(status_code=404, detail="礼包码不存在")
-    return {"ok": True, "code": row}
+    # 管理员把码改回可用（重新激活 / 重置官方状态 / 延长有效期）后，必须把此前因该码
+    # 失效而被取消的任务放回队列，并给尚未排过队的玩家补齐——否则这些玩家会永远漏兑此码。
+    revived = db.revive_canceled_for_code(row["id"])
+    queued = db.enqueue_redemptions_for_code(row["id"])
+    return {"ok": True, "code": row, "revived": revived, "queued": queued}
 
 
 @app.delete("/admin/codes/{code}", dependencies=[Depends(require_admin)])
