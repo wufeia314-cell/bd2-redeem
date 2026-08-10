@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import threading
 import time
+import hmac
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -134,6 +135,9 @@ def _stop_fetch_loop() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
+    if config.ADMIN_TOKEN == "change-me-admin-token":
+        print("[SECURITY] 警告：正在使用默认管理员令牌 change-me-admin-token！"
+              "请通过环境变量 BD2_ADMIN_TOKEN 设置一个强口令，否则管理后台形同裸奔。")
     worker.start()        # 启动后台限速兑换线程
     _start_fetch_loop()   # 启动社区自动抓取调度
     yield
@@ -186,7 +190,8 @@ class CodeReq(BaseModel):
 
 
 def require_admin(x_admin_token: str = Header(default="")) -> None:
-    if x_admin_token != config.ADMIN_TOKEN:
+    # 恒定时间比较，避免令牌逐字符计时攻击
+    if not hmac.compare_digest(x_admin_token, config.ADMIN_TOKEN):
         raise HTTPException(status_code=401, detail="管理员令牌无效")
 
 
@@ -213,9 +218,13 @@ def public_codes(nickname: str | None = None):
     return {"codes": codes, "participants": db.get_participant_count()}
 
 
-@app.get("/api/status/{nickname}")
+@app.get("/api/status")
 def my_status(nickname: str):
-    """玩家用游戏昵称查询自己的兑换情况。"""
+    """玩家用游戏昵称查询自己的兑换情况。
+
+    昵称作为 query 参数传递（而非 path 参数）：昵称可能包含 '/' 等字符，
+    若用 path 参数会被路由当成路径分隔符导致 404（FastAPI 对 %2F 的已知限制）。
+    """
     records = db.get_player_redemptions(nickname.strip(), limit=1000)
     player = db.get_player_any(nickname.strip())
     return {"nickname": nickname.strip(), "player": player, "records": records}

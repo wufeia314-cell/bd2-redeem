@@ -47,7 +47,7 @@
     <div class="tokenbar">
       <div>
         <label>管理员令牌（X-Admin-Token，默认 change-me-admin-token，请在 config.py 修改）</label>
-        <input id="token" placeholder="输入管理员令牌" value="change-me-admin-token" />
+        <input id="token" placeholder="输入管理员令牌（默认 change-me-admin-token，请在部署环境变量 BD2_ADMIN_TOKEN 中修改）" />
       </div>
       <button onclick="refreshAll()">连接 / 刷新</button>
     </div>
@@ -154,16 +154,16 @@ function renderAdminCodeTable(){
   const box=document.getElementById('codeList');
   let h='<table><tr><th>礼包码</th><th>奖励</th><th>数量</th><th>图标</th><th>过期时间</th><th>状态</th><th>操作</th></tr>';
   for(const x of _adminCodes){
-    h+=`<tr data-code="${x.code}">
-      <td style="font-family:monospace;font-weight:600">${x.code}</td>
+    h+=`<tr data-code="${esc(x.code)}">
+      <td style="font-family:monospace;font-weight:600">${esc(x.code)}</td>
       <td><input data-field="reward_name" value="${esc(x.reward_name||'')}" style="min-width:90px" /></td>
       <td><input data-field="reward_qty" value="${esc(x.reward_qty||'')}" style="width:70px" /></td>
       <td><input data-field="reward_icon" value="${esc(x.reward_icon||'')}" style="width:70px" /></td>
       <td><input data-field="expires_at" value="${esc(x.expires_at||'')}" placeholder="永久有效" style="width:120px" /></td>
       <td class="st ${x.status}">${x.status==='active'?'生效':x.status==='expired'?'已过期':'停用'}</td>
       <td>
-        <button onclick="saveCodeRow('${x.code}')" style="padding:6px 10px;margin-top:0">保存</button>
-        <button class="ghost" onclick="deleteCode('${x.code}')" style="padding:6px 10px;margin-top:0;margin-left:4px">删除</button>
+        <button onclick="saveCodeRow(this)" style="padding:6px 10px;margin-top:0">保存</button>
+        <button class="ghost" onclick="deleteCode(this)" style="padding:6px 10px;margin-top:0;margin-left:4px">删除</button>
       </td>
     </tr>`;
   }
@@ -172,8 +172,9 @@ function renderAdminCodeTable(){
 
 function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
-async function saveCodeRow(code){
-  const row=document.querySelector(`tr[data-code="${code}"]`);
+async function saveCodeRow(btn){
+  const row=btn.closest('tr');
+  const code=row.dataset.code;
   const msg=document.getElementById('codeEditMsg');msg.className='msg';
   const payload={};
   row.querySelectorAll('input[data-field]').forEach(i=>{
@@ -188,7 +189,9 @@ async function saveCodeRow(code){
   }catch(e){msg.className='msg err';msg.textContent='网络错误：'+e;}
 }
 
-async function deleteCode(code){
+async function deleteCode(btn){
+  const row=btn.closest('tr');
+  const code=row.dataset.code;
   if(!confirm('确定删除 '+code+'？关联兑换记录也会被级联删除。')) return;
   const msg=document.getElementById('codeEditMsg');msg.className='msg';
   try{
@@ -223,10 +226,10 @@ async function loadRedemptions(){
     if(!d.records.length){box.innerHTML='<p style="color:var(--sub);font-size:13px">暂无记录</p>';return;}
     let h='<table><tr><th>游戏昵称</th><th>礼包码</th><th>状态</th><th>尝试</th><th>说明</th><th>更新时间</th></tr>';
     for(const x of d.records){
-      h+=`<tr><td>${x.nickname||'-'}</td>
-        <td style="font-family:monospace">${x.code}</td>
+      h+=`<tr><td>${esc(x.nickname||'-')}</td>
+        <td style="font-family:monospace">${esc(x.code)}</td>
         <td class="st ${x.status}">${ST_TEXT[x.status]||x.status}</td>
-        <td>${x.attempts}</td><td style="color:var(--sub)">${x.message||''}</td>
+        <td>${x.attempts}</td><td style="color:var(--sub)">${esc(x.message||'')}</td>
         <td style="color:var(--sub)">${(x.updated_at||'').replace('T',' ').slice(0,19)}</td></tr>`;
     }
     box.innerHTML=h+'</table>';
@@ -243,8 +246,8 @@ async function loadPlayers(){
     let h='<table><tr><th>游戏昵称</th><th>备注</th><th>有效期至</th><th>状态</th></tr>';
     for(const x of d.players){
       const active = x.active==1 && new Date(x.expires_at) > new Date();
-      h+=`<tr><td>${x.nickname||'-'}</td>
-        <td style="color:var(--sub)">${x.note||''}</td>
+      h+=`<tr><td>${esc(x.nickname||'-')}</td>
+        <td style="color:var(--sub)">${esc(x.note||'')}</td>
         <td style="color:var(--sub)">${(x.expires_at||'').replace('T',' ').slice(0,19)}</td>
         <td class="st ${active?'success':'error'}">${active?'有效期内':'已过期/停用'}</td></tr>`;
     }

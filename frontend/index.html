@@ -120,6 +120,9 @@
   .code-card .status.inactive{background:var(--err-bg);color:var(--err)}
   .code-card.dead{opacity:.55}
   .code-card .status.dead{background:#eee;color:#999}
+  .code-card .status.success{background:var(--ok-bg);color:var(--ok)}
+  .code-card .status.pending{background:var(--pending-bg);color:var(--pending)}
+  .code-card .status.failed{background:var(--err-bg);color:var(--err)}
   .code-card .body{display:flex;align-items:center;gap:9px}
   .code-card .icon{width:40px;height:40px;border-radius:11px;background:linear-gradient(135deg,var(--chip),var(--chip-l));
                    display:flex;align-items:center;justify-content:center;flex:0 0 40px}
@@ -244,6 +247,9 @@ const ST_TEXT = {success:"已兑换",already:"已兑换过",pending:"排队中",
 // 绑定的昵称持久化到本地，刷新/重进后自动恢复绑定卡片与倒计时
 const LS_NICK='bd2_nick';
 
+// 防御 XSS：所有插入 innerHTML 的外部/用户派生内容都必须先过 esc()
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
 function toast(msg){
   const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
   clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);
@@ -356,16 +362,16 @@ function showMe(nick, player){
   box.dataset.nick=nick;
   if(!player){
     box.dataset.exp='';
-    box.innerHTML=`<div class="me unbound"><div class="ava">${nick.slice(0,1).toUpperCase()}</div>
-      <div><div class="who">${nick}</div>
+    box.innerHTML=`<div class="me unbound"><div class="ava">${esc(nick).slice(0,1).toUpperCase()}</div>
+      <div><div class="who">${esc(nick)}</div>
       <div class="st-txt warn">未绑定或已过期 · 在上方输入昵称绑定即可自动兑换</div></div></div>`;
     return;
   }
   box.dataset.exp=player.expires_at||'';
   const exp=fmtDate(player.expires_at);
   const cd=remainingText(player.expires_at);
-  box.innerHTML=`<div class="me"><div class="ava">${nick.slice(0,1).toUpperCase()}</div>
-     <div><div class="who">${nick}<span class="unbind" onclick="clearBind()">切换昵称</span></div>
+  box.innerHTML=`<div class="me"><div class="ava">${esc(nick).slice(0,1).toUpperCase()}</div>
+     <div><div class="who">${esc(nick)}<span class="unbind" onclick="clearBind()">切换昵称</span></div>
      <div class="st-txt">✅ 已绑定 · 新礼包码将自动兑换</div>
      <div class="exp">📅 有效期至 ${exp}</div>
      <div class="cd ${cd.expired?'expired':''}" id="bindCountdown">⏳ ${cd.text}</div></div></div>`;
@@ -454,8 +460,7 @@ function renderCodes(list, participants){
       const my=c.my_status;
       if(my==='success' || my==='already'){ statusCls='success'; statusText='已兑换'; }
       else if(my==='pending' || my==='network_error'){ statusCls='pending'; statusText='兑换中'; }
-      else if(my){ statusCls=my; statusText={invalid:'兑换失败',expired:'兑换失败',exceeded:'兑换失败',
-                                              unavailable:'兑换失败',bad_user:'昵称错误',error:'兑换失败'}[my]||'兑换失败'; }
+      else if(my){ statusCls='failed'; statusText={bad_user:'昵称错误',error:'兑换失败'}[my]||'兑换失败'; }
       else { const s=c.status||'active'; statusCls=s;
              statusText={active:'待兑换',expired:'已过期',inactive:'已停用'}[s]||'待兑换'; }
       exp=daysLeft(c.expires_at);
@@ -466,13 +471,13 @@ function renderCodes(list, participants){
     const qty=rawQty ? (rawQty.toLowerCase().startsWith('x')?rawQty:'x'+rawQty) : '';
     // 优先展示 GameKee 提供的真实奖励图标；加载失败则回退到关键字 SVG 图标
     const iconHtml = c.reward_icon_url
-      ? `<img class="icon-img" src="${c.reward_icon_url}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.outerHTML=ICONS['${(c.reward_icon||'gift')}']">`
+      ? `<img class="icon-img" src="${esc(c.reward_icon_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.outerHTML=ICONS['${(c.reward_icon||'gift')}']">`
       : (ICONS[c.reward_icon]||ICONS.gift);
     const rewardBlock=hasReward?`
       <div class="body">
         <div class="icon">${iconHtml}</div>
         <div class="reward">
-          <div class="reward-name">${c.reward_name||c.description}</div>
+          <div class="reward-name">${esc(c.reward_name||c.description)}</div>
           ${qty?`<div class="reward-qty">${qty}</div>`:''}
         </div>
       </div>`:'';
@@ -482,12 +487,12 @@ function renderCodes(list, participants){
           ${upd?`<span class="upd">${upd}</span>`:''}
           <span class="exp">${exp}</span>
         </div>
-        <span class="status ${statusCls}">${statusText}</span>
+        <span class="status ${statusCls}">${esc(statusText)}</span>
       </div>
       ${rewardBlock}
       <div class="code-row">
-        <span class="code-str">${c.code}</span>
-        <button class="copy" onclick="copyCode('${c.code}')" aria-label="复制">${COPY_SVG}</button>
+        <span class="code-str">${esc(c.code)}</span>
+        <button class="copy" data-code="${esc(c.code)}" onclick="copyCode(this.dataset.code)" aria-label="复制">${COPY_SVG}</button>
       </div>
     </div>`;
   }).join('');
@@ -513,7 +518,7 @@ async function queryStatus(){
   if(!document.getElementById('meBox').dataset.nick) showMe(nick, null);
   box.innerHTML='<p class="empty">查询中…</p>';
   try{
-    const {ok,data}=await requestJson('/api/status/'+encodeURIComponent(nick),'GET');
+    const {ok,data}=await requestJson('/api/status?nickname='+encodeURIComponent(nick),'GET');
     if(!ok){box.innerHTML='<p class="empty">查询失败</p>';return;}
     if(data.player) showMe(nick, data.player);   // 用真实 expires_at 渲染带倒计时的绑定卡片
     if(!data.records.length){box.innerHTML='<p class="empty">暂无兑换记录，绑定后稍等片刻再来查。</p>';return;}
@@ -522,8 +527,8 @@ async function queryStatus(){
     data.records.sort((a,b)=>(order[a.status]??9)-(order[b.status]??9));
     for(const x of data.records){
       const st=ST_TEXT[x.status]||x.status;
-      h+=`<div class="rec"><div><div class="code">${x.code}</div>
-          <div class="sub">${x.message||''}</div></div>
+      h+=`<div class="rec"><div><div class="code">${esc(x.code)}</div>
+          <div class="sub">${esc(x.message||'')}</div></div>
           <span class="tag ${x.status}">${st}</span></div>`;
     }
     const succ=data.records.filter(r=>r.status==='success'||r.status==='already').length;
