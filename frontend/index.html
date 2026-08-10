@@ -126,6 +126,8 @@
   .code-card .icon{width:40px;height:40px;border-radius:11px;background:linear-gradient(135deg,var(--chip),var(--chip-l));
                    display:flex;align-items:center;justify-content:center;flex:0 0 40px}
   .code-card .icon svg{width:22px;height:22px;fill:var(--accent)}
+  .code-card .icon .icon-img{width:40px;height:40px;border-radius:11px;object-fit:contain;
+                             background:#fff;display:block;box-shadow:0 0 0 1px rgba(0,0,0,.04)}
   .code-card .reward{flex:1;min-width:0}
   .code-card .reward-name{font-size:12.5px;font-weight:700;color:var(--txt);line-height:1.3;word-break:break-all}
   .code-card .reward-qty{font-size:11px;color:var(--sub);margin-top:1px}
@@ -460,9 +462,13 @@ function renderCodes(list, participants){
     const hasReward=!!(c.reward_name || c.description);
     const rawQty=c.reward_qty||'';
     const qty=rawQty ? (rawQty.toLowerCase().startsWith('x')?rawQty:'x'+rawQty) : '';
+    // 优先展示 GameKee 提供的真实奖励图标；加载失败则回退到关键字 SVG 图标
+    const iconHtml = c.reward_icon_url
+      ? `<img class="icon-img" src="${c.reward_icon_url}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.outerHTML=ICONS['${(c.reward_icon||'gift')}']">`
+      : (ICONS[c.reward_icon]||ICONS.gift);
     const rewardBlock=hasReward?`
       <div class="body">
-        <div class="icon">${ICONS[c.reward_icon]||ICONS.gift}</div>
+        <div class="icon">${iconHtml}</div>
         <div class="reward">
           <div class="reward-name">${c.reward_name||c.description}</div>
           ${qty?`<div class="reward-qty">${qty}</div>`:''}

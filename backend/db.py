@@ -112,6 +112,7 @@ def init_db() -> None:
                 reward_name TEXT DEFAULT '',          -- 奖励名称（如 抽、粉、金币）
                 reward_qty  TEXT DEFAULT '',          -- 奖励数量（如 x3）
                 reward_icon TEXT DEFAULT '',          -- 图标关键字（前端映射）
+                reward_icon_url TEXT DEFAULT '',      -- 图标图片 URL（GameKee 提供，可选）
                 expires_at  TEXT,                     -- ISO 时间，可空=永久有效
                 updated_at  TEXT NOT NULL,            -- 最后发现/更新时间
                 active      INTEGER NOT NULL DEFAULT 1,
@@ -166,6 +167,13 @@ def init_db() -> None:
         try:
             conn.execute(
                 "ALTER TABLE codes ADD COLUMN published_at TEXT DEFAULT ''"
+            )
+        except Exception:
+            pass
+        # codes 表补充「图标图片 URL」列（来自 GameKee 的 image 字段，可选）
+        try:
+            conn.execute(
+                "ALTER TABLE codes ADD COLUMN reward_icon_url TEXT DEFAULT ''"
             )
         except Exception:
             pass
@@ -287,6 +295,7 @@ def add_code(
     reward_name: str = "",
     reward_qty: str = "",
     reward_icon: str = "",
+    reward_icon_url: str = "",
     expires_at: str | None = None,
     source: str = "manual",
     published_at: str | None = None,
@@ -299,6 +308,7 @@ def add_code(
     d_rname = reward_name.strip()
     d_qty = reward_qty.strip()
     d_icon = reward_icon.strip()
+    d_icon_url = reward_icon_url.strip()
     with _lock, get_conn() as conn:
         existing = conn.execute("SELECT * FROM codes WHERE code=?", (code,)).fetchone()
         if existing:
@@ -308,6 +318,7 @@ def add_code(
                 (existing["reward_name"] or "") == d_rname
                 and (existing["reward_qty"] or "") == d_qty
                 and (existing["reward_icon"] or "") == d_icon
+                and (existing["reward_icon_url"] or "") == d_icon_url
                 and (existing["description"] or "") == d_desc
                 and (existing["expires_at"] or None) == (expires_at or None)
                 and (existing["published_at"] or "") == (published_at or "")
@@ -327,13 +338,14 @@ def add_code(
                     description=COALESCE(NULLIF(?,''), description),
                     reward_name=COALESCE(NULLIF(?,''), reward_name),
                     reward_qty= COALESCE(NULLIF(?,''),  reward_qty),
-                    reward_icon=COALESCE(NULLIF(?,''), reward_icon)
+                    reward_icon=COALESCE(NULLIF(?,''), reward_icon),
+                    reward_icon_url=COALESCE(NULLIF(?,''), reward_icon_url)
                 WHERE code=?
                 """,
                 (
                     source, now,
                     published_at or "", expires_at,
-                    d_desc, d_rname, d_qty, d_icon,
+                    d_desc, d_rname, d_qty, d_icon, d_icon_url,
                     code,
                 ),
             )
@@ -342,11 +354,12 @@ def add_code(
         conn.execute(
             """
             INSERT INTO codes(code, description, reward_name, reward_qty, reward_icon,
+                              reward_icon_url,
                               expires_at, published_at, updated_at, active, source, created_at)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
-                code, d_desc, d_rname, d_qty, d_icon,
+                code, d_desc, d_rname, d_qty, d_icon, d_icon_url,
                 expires_at, published_at, now, 1, source, now,
             ),
         )
@@ -362,12 +375,13 @@ def add_code_and_enqueue(
     reward_name: str = "",
     reward_qty: str = "",
     reward_icon: str = "",
+    reward_icon_url: str = "",
     expires_at: str | None = None,
     source: str = "manual",
     published_at: str | None = None,
 ) -> tuple[dict, int]:
     """录入礼包码并立即为所有在有效期内玩家生成 pending 任务。返回 (code行, 新建任务数)。"""
-    row = add_code(code, description, reward_name, reward_qty, reward_icon, expires_at, source, published_at)
+    row = add_code(code, description, reward_name, reward_qty, reward_icon, reward_icon_url, expires_at, source, published_at)
     queued = enqueue_redemptions_for_code(row["id"])
     return row, queued
 
@@ -377,6 +391,7 @@ def update_code(
     reward_name: str | None = None,
     reward_qty: str | None = None,
     reward_icon: str | None = None,
+    reward_icon_url: str | None = None,
     description: str | None = None,
     expires_at: str | None = None,
     active: bool | None = None,
@@ -391,6 +406,8 @@ def update_code(
         fields.append(("reward_qty", reward_qty.strip()))
     if reward_icon is not None:
         fields.append(("reward_icon", reward_icon.strip()))
+    if reward_icon_url is not None:
+        fields.append(("reward_icon_url", reward_icon_url.strip()))
     if description is not None:
         fields.append(("description", description.strip()))
     if expires_at is not None:

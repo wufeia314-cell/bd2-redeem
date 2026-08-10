@@ -97,6 +97,7 @@ def _run_fetch() -> dict:
                 c.get("reward_name", ""),
                 c.get("reward_qty", ""),
                 c.get("reward_icon", ""),
+                c.get("reward_icon_url", ""),
                 c.get("expires_at"),
                 source=c.get("source") or "auto:community",
                 published_at=c.get("published_at"),
@@ -179,6 +180,7 @@ class CodeReq(BaseModel):
     reward_name: str = Field("", max_length=64, description="奖励名称，如 抽 / 粉 / 金币 / 招募券")
     reward_qty: str = Field("", max_length=16, description="奖励数量，如 x3 / x100000")
     reward_icon: str = Field("", max_length=16, description="图标关键字：gift/ticket/powder/gold/deco/gear/exp")
+    reward_icon_url: str = Field("", max_length=512, description="图标图片 URL（优先于关键字图标展示）")
     expires_at: str | None = Field(None, description="ISO 时间，可空")
     source: str = Field("manual", max_length=32)
 
@@ -224,6 +226,7 @@ def admin_add_code(req: CodeReq):
         req.reward_name,
         req.reward_qty,
         req.reward_icon,
+        req.reward_icon_url,
         req.expires_at,
         req.source,
     )
@@ -234,6 +237,7 @@ class CodeUpdateReq(BaseModel):
     reward_name: str | None = Field(None, max_length=64)
     reward_qty: str | None = Field(None, max_length=16)
     reward_icon: str | None = Field(None, max_length=16)
+    reward_icon_url: str | None = Field(None, max_length=512, description="图标图片 URL（空字符串可清空）")
     description: str | None = Field(None, max_length=128)
     expires_at: str | None = Field(None, description="ISO 时间，传空字符串表示清空/永久有效")
     active: bool | None = Field(None)

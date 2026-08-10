@@ -412,6 +412,10 @@ def fetch_gamekee_codes(
                 if created
                 else datetime.now().date().isoformat()
             )
+            # GameKee 的 image 字段是协议相对地址（//cdnimg-v2...），补全为 https 后作为图标 URL。
+            # 绝大多数通用奖励（3抽/10w粉等）该字段为空，仅具体道具（装饰币/装备/角色等）有配图。
+            raw_img = (it.get("image") or "").strip()
+            icon_url = ("https:" + raw_img) if raw_img.startswith("//") else raw_img
             out.append(
                 {
                     "code": code,
@@ -419,6 +423,7 @@ def fetch_gamekee_codes(
                     "reward_name": content,
                     "reward_qty": "",
                     "reward_icon": _map_gamekee_icon(content, it.get("type", 0) or 0),
+                    "reward_icon_url": icon_url,  # 真实图标图片（有则展示，无则回退 SVG 关键字图标）
                     "expires_at": expires_at,
                     "published_at": updated,  # GameKee 的 created_at 即码上线/录入时间
                     "updated_at": updated,    # 内部排序用，不对外展示
