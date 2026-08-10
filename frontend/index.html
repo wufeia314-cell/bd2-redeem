@@ -297,10 +297,12 @@ function daysLeft(iso){
 function _hasCJK(s){
   return !!s && /[　-〿一-鿿＀-￯]/.test(s);
 }
-// 是否为「待官方验证且非中文」的码（这类应沉到列表最底部）。
-// 置顶条件（满足任一即不算沉底）：来自 GameKee 中文权威源 / 奖励含中文 / 已被官方实测验证过。
+// 是否为「待官方验证且非中文」的码，或「官方已判失效/过期」的码（这类应沉到列表最底部）。
+// 置顶条件（满足任一即不算沉底）：来自 GameKee 中文权威源 / 奖励含中文 / 已被官方实测验证过(非 dead)。
+const _DEAD_OFF={expired:1,invalid:1,exceeded:1,unavailable:1};
 function _isBottomCode(c){
   const off=c.official_status||'pending';
+  if(_DEAD_OFF[off]) return true;   // 官方已判失效/过期/达上限/不可用 → 沉底
   const pending=(off==='pending'||off===''||off==null);
   const trusted=(c.source==='auto:gamekee')
               || _hasCJK(c.reward_name) || _hasCJK(c.description)

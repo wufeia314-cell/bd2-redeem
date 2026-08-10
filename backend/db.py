@@ -433,6 +433,10 @@ def mark_code_official_status(code_id: int, status: str) -> None:
         )
 
 
+# worker 实测判定的「已死」官方状态：这些码视为失效/过期，默认不应进入生效列表
+_DEAD_OFFICIAL = {"expired", "invalid", "exceeded", "unavailable"}
+
+
 def list_codes(active_only: bool = False, include_expired: bool = True) -> list[dict]:
     q = "SELECT * FROM codes"
     params = []
@@ -444,7 +448,13 @@ def list_codes(active_only: bool = False, include_expired: bool = True) -> list[
     for r in rows:
         r["status"] = _code_status(r)
     if active_only and not include_expired:
-        rows = [r for r in rows if r["status"] != "expired"]
+        # 既按日期过期、也按官方实测失效态过滤（official_status 为 dead 的码同样隐藏）
+        rows = [
+            r
+            for r in rows
+            if r["status"] != "expired"
+            and (r.get("official_status") or "pending") not in _DEAD_OFFICIAL
+        ]
     return rows
 
 
