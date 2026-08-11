@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <meta name="theme-color" content="#7a4a24" />
-<title>棕色尘埃2 · 礼包码自动兑换</title>
+<title>棕色尘埃2 · 礼包码兑换</title>
 <style>
   :root{
     --bg:#f6f2ec;--bg2:#efe7dd;--card:#ffffff;--line:#ece3d6;--txt:#33291f;--sub:#9a8f80;
@@ -18,29 +18,24 @@
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;padding:0}
-  /* 背景方案（移动端兼容优先）：
-     body 建立层叠上下文(position:relative + z-index:0)，背景图放在 ::before 最底层(z-index:-1)，
-     暖色半透明罩放在 ::after 紧贴内容之下——这样无论 iOS Safari 还是 Android 都稳定透出背景图，
-     且负 z-index 不会再被父级背景盖死（旧方案 .bg-layer 正是因此手机上完全不可见）。 */
+  /* 背景方案（移动端兼容优先）：body 建层叠上下文，背景图放 ::before 最底层，
+     暖色半透明罩放 ::after，确保 iOS/Android 都稳定透出且不被父级背景盖死。 */
   body{position:relative;z-index:0;
     color:var(--txt);line-height:1.55;
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
     -webkit-font-smoothing:antialiased;}
   html{background:#f6f2ec}
-  /* 背景图：淡淡、半透明、带轻微模糊，确保不抢内容；pointer-events:none 不遮挡点击 */
   body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
     background:url('/static/bg.webp') center/cover no-repeat;
     opacity:.22;filter:blur(2px);transform:scale(1.06)}
-  /* 暖色半透明罩：叠在背景图之上、内容之下，既保证文字区域对比度，又让图片若隐若现 */
   body::after{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
     background:
       radial-gradient(120% 55% at 50% -12%, rgba(255,246,234,.42) 0%, transparent 55%),
       linear-gradient(180deg, rgba(246,242,236,.50) 0%, rgba(239,231,221,.60) 100%)}
   .app{max-width:480px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;
-       padding:0 0 calc(76px + env(safe-area-inset-bottom));position:relative}
+       padding:0 0 calc(40px + env(safe-area-inset-bottom));position:relative}
 
   /* ===== 顶部 hero ===== */
-  /* 让背景图在头图区域透出来：半透明深色渐变罩在图片上，既保留氛围又保证白字可读 */
   .hero{position:relative;overflow:hidden;color:#fff;
         padding:calc(30px + env(safe-area-inset-top)) 22px 24px;
         background:linear-gradient(155deg,rgba(90,52,22,.78) 0%,rgba(140,84,38,.70) 42%,rgba(190,128,62,.58) 100%)}
@@ -55,64 +50,23 @@
         text-shadow:0 2px 8px rgba(0,0,0,.35)}
   .hero p{position:relative;z-index:1;margin:9px 0 0;font-size:13px;opacity:.96;line-height:1.65;
         text-shadow:0 1px 5px rgba(0,0,0,.32)}
-  .hero-note{position:relative;z-index:1;display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:13px;
-        font-size:12px;opacity:.98;line-height:1.5;text-shadow:0 1px 5px rgba(0,0,0,.30)}
-  .hero-note .k{display:inline-block;background:rgba(255,255,255,.22);padding:3px 10px;
-        border-radius:9px;font-weight:700;white-space:nowrap}
-  .hero-note .v{opacity:.98}
 
-  /* ===== 绑定条 ===== */
-  .bindbar{position:relative;z-index:10;background:rgba(255,255,255,.90);border:1px solid var(--line);
-           border-radius:var(--radius);padding:9px 9px 9px 16px;
-           margin:-22px 16px 0;box-shadow:var(--shadow);display:flex;align-items:center;gap:10px;
+  /* ===== 昵称栏 ===== */
+  .nickbar{position:relative;z-index:10;background:rgba(255,255,255,.90);border:1px solid var(--line);
+           border-radius:var(--radius);padding:14px 16px;margin:-22px 16px 0;box-shadow:var(--shadow);
            backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
-  .bindbar input{flex:1;border:0;background:transparent;font-size:15px;outline:none;padding:11px 0;
-                 color:var(--txt);min-width:0}
-  .bindbar input::placeholder{color:#c2b8ac}
-  .bindbar .count{font-size:12px;color:var(--sub);white-space:nowrap}
-  .bindbar button{white-space:nowrap;padding:12px 20px;border:0;border-radius:14px;cursor:pointer;
-                  background:linear-gradient(135deg,#a86a30,#c9873f);color:#fff;font-size:15px;font-weight:700;
-                  box-shadow:0 4px 12px rgba(154,94,44,.32);transition:transform .12s,box-shadow .2s,opacity .2s}
-  .bindbar button:active{transform:scale(.96);box-shadow:0 2px 7px rgba(154,94,44,.28)}
-  .bindbar button:disabled{opacity:.55}
-
-  /* ===== 分段 tab ===== */
-  .tabs{position:sticky;top:0;z-index:20;display:flex;background:rgba(255,255,255,.92);
-        backdrop-filter:blur(8px);border-bottom:1px solid var(--line);margin-top:18px}
-  .tab{flex:1;text-align:center;padding:14px 0;font-size:14px;color:var(--sub);font-weight:600;
-        position:relative;cursor:pointer;transition:color .2s}
-  .tab.active{color:var(--accent)}
-  .tab.active::after{content:"";position:absolute;left:50%;bottom:0;transform:translateX(-50%);
-        width:36px;height:3px;border-radius:3px;background:var(--accent-l)}
+  .nickbar label{display:block;font-size:12px;color:var(--sub);margin-bottom:7px}
+  .nickbar input{width:100%;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:15px;
+                 outline:none;background:#fff;color:var(--txt);box-sizing:border-box}
+  .nickbar input::placeholder{color:#c2b8ac}
+  .nickbar .hint{font-size:11.5px;color:var(--sub);margin-top:8px;line-height:1.5}
 
   /* ===== 面板 ===== */
   .panels{flex:1;padding:18px 16px 0}
-  .panel{display:none;animation:fade .3s ease}
-  .panel.active{display:block}
-  @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-
   .card{background:rgba(255,255,255,.90);border:1px solid var(--line);border-radius:var(--radius);padding:18px;
         box-shadow:var(--shadow-sm);margin-bottom:16px;
         backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
   .card h2{margin:0 0 2px;font-size:15px;font-weight:800;letter-spacing:.2px;display:flex;align-items:center;gap:6px}
-  .card .desc{color:var(--sub);font-size:12.5px;margin:0 0 14px;line-height:1.6}
-
-  /* 已绑定状态卡 */
-  .me{display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,rgba(255,247,238,.92),rgba(251,238,222,.92));
-        border:1px solid var(--chip-l);border-radius:14px;padding:14px;margin-bottom:14px}
-  .me .ava{width:44px;height:44px;border-radius:50%;flex:0 0 44px;display:flex;align-items:center;
-        justify-content:center;background:linear-gradient(135deg,#9a5e2c,#c9873f);color:#fff;font-size:20px;font-weight:700;
-        box-shadow:0 3px 8px rgba(154,94,44,.3)}
-  .me .who{font-size:15px;font-weight:700;word-break:break-all}
-  .me .st-txt{font-size:12px;color:var(--sub);margin-top:2px}
-  .me .exp{font-size:11px;color:var(--accent-d);margin-top:3px}
-  .me .cd{font-size:12px;font-weight:700;color:var(--accent);margin-top:3px}
-  .me .cd.expired{color:var(--err)}
-  .me .who .unbind{margin-left:8px;font-size:11px;font-weight:400;color:var(--sub);cursor:pointer;
-                  border-bottom:1px dashed currentColor}
-  .me .who .unbind:hover{color:var(--accent)}
-  .me.unbound{background:linear-gradient(135deg,rgba(255,243,243,.92),rgba(253,236,236,.92))}
-  .me.unbound .st-txt.warn{color:var(--err)}
 
   /* 礼包码卡片网格 */
   .codes-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
@@ -134,11 +88,6 @@
   .code-card .status.inactive{background:var(--err-bg);color:var(--err)}
   .code-card.dead{opacity:.55}
   .code-card .status.dead{background:#eee;color:#999}
-  .code-card .status.success{background:var(--ok-bg);color:var(--ok)}
-  .code-card .status.pending{background:var(--pending-bg);color:var(--pending)}
-  .code-card .status.failed{background:var(--err-bg);color:var(--err)}
-  /* 绑定已过期：任务不会再被后台执行，必须与「兑换中」区分开，否则是在骗玩家干等 */
-  .code-card .status.stale{background:#fff4e5;color:#b26a00}
   .code-card .body{display:flex;align-items:center;gap:9px}
   .code-card .icon{width:40px;height:40px;border-radius:11px;background:linear-gradient(135deg,var(--chip),var(--chip-l));
                    display:flex;align-items:center;justify-content:center;flex:0 0 40px}
@@ -155,30 +104,15 @@
                    display:flex;align-items:center;justify-content:center;padding:0;transition:background .15s}
   .code-card .copy:active{background:rgba(154,94,44,.2)}
   .code-card .copy svg{width:16px;height:16px;fill:var(--accent)}
+  .code-card .actions{display:flex;gap:8px;margin-top:2px}
+  .redeem-btn{flex:1;padding:11px 14px;border:0;border-radius:12px;cursor:pointer;
+             background:linear-gradient(135deg,#a86a30,#c9873f);color:#fff;font-size:14px;font-weight:700;
+             box-shadow:0 4px 12px rgba(154,94,44,.28);transition:transform .12s,opacity .2s}
+  .redeem-btn:active{transform:scale(.97)}
+  .redeem-btn:disabled{opacity:.6;cursor:default}
+  .redeem-btn.done{background:#e8f6ed;color:var(--ok);box-shadow:none;border:1px solid #bfe6cd}
   .empty{display:block;color:var(--sub);font-size:13px;padding:14px 0;text-align:center;line-height:1.7}
   .empty a,.retry{color:var(--accent);font-weight:700;text-decoration:none;border-bottom:1px dashed currentColor;cursor:pointer}
-
-  /* 记录列表 */
-  .rec{display:flex;align-items:center;justify-content:space-between;padding:13px 4px;
-        border-bottom:1px solid var(--line);gap:10px}
-  .rec:last-child{border-bottom:0}
-  .rec .code{font-family:ui-monospace,Menlo,monospace;font-size:14px;font-weight:700;color:var(--txt)}
-  .rec .sub{font-size:11.5px;color:var(--sub);margin-top:2px}
-  .tag{font-size:12px;font-weight:700;padding:4px 11px;border-radius:20px;white-space:nowrap}
-  .tag.success,.tag.already{background:var(--ok-bg);color:var(--ok)}
-  .tag.pending{background:var(--pending-bg);color:var(--pending)}
-  .tag.failed,.tag.invalid,.tag.expired,.tag.bad_user,.tag.error,
-  .tag.exceeded,.tag.unavailable{background:var(--err-bg);color:var(--err)}
-  .tag.canceled{background:#f1f1f1;color:#9a9a9a}
-
-  /* 我的记录面板里的输入框与按钮 */
-  #queryNick{width:100%;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:15px;
-            outline:none;background:rgba(255,255,255,.92);color:var(--txt);box-sizing:border-box;margin-top:12px}
-  #queryNick::placeholder{color:#c2b8ac}
-  .ghost{width:100%;margin-top:12px;padding:11px 16px;border:1px solid var(--line);border-radius:12px;
-         background:rgba(255,255,255,.92);color:var(--accent);font-size:14px;font-weight:700;cursor:pointer;
-         transition:background .15s,transform .12s}
-  .ghost:active{transform:scale(.98);background:var(--accent-soft)}
 
   .foot{color:var(--sub);font-size:11.5px;text-align:center;padding:22px 18px calc(20px + env(safe-area-inset-bottom));
         line-height:1.8;border-top:1px solid var(--line);margin-top:8px}
@@ -189,69 +123,33 @@
         z-index:50;opacity:0;transition:.25s;pointer-events:none;max-width:86%;text-align:center;
         box-shadow:0 6px 20px rgba(0,0,0,.2)}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-
-  .modal{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:60;padding:16px;overflow:auto}
-  .modal.show{display:flex}
-  .modal-content{position:relative;background:#fff;border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,.35);max-width:680px;width:100%;padding:20px;text-align:center;animation:pop .22s ease-out}
-  @keyframes pop{from{opacity:0;transform:scale(.92)} to{opacity:1;transform:scale(1)}}
-  .modal-content h3{margin:0 0 12px;font-size:17px;color:#4a3b2a}
-  .modal-content img{max-width:100%;border-radius:12px;display:block}
-  .modal-caption{margin-top:12px;font-size:13px;color:var(--sub);line-height:1.7}
-  .modal-close{position:absolute;right:14px;top:10px;background:none;border:none;font-size:24px;color:#888;cursor:pointer;line-height:1}
-  .modal-close:hover{color:#333}
-  @media(max-width:640px){
-    .modal-content{padding:14px;border-radius:14px}
-    .modal-content h3{font-size:15px}
-  }
 </style>
 </head>
 <body>
 <div class="app">
   <div class="hero">
-    <span class="badge">BD2 · 自动兑换</span>
-    <h1>🎁 礼包码自动兑换</h1>
-    <p>输入游戏昵称绑定一次，后续新礼包码自动帮你兑换，奖励直达游戏邮箱。</p>
-    <div class="hero-note"><span class="k">绑定有效期</span><span class="v">14 天 · 到期自动停止为你兑换新码 · 可重新绑定续期</span></div>
+    <span class="badge">BD2 · 礼包码兑换</span>
+    <h1>🎁 礼包码兑换</h1>
+    <p>填写你的游戏昵称，点击礼包码卡片上的「兑换」按钮，即可一键领取奖励到游戏邮箱。</p>
   </div>
 
-  <div class="bindbar">
-    <input id="nickname" maxlength="24" placeholder="请输入游戏昵称" autocomplete="off" />
-    <span class="count" id="playerCount">已有人参与</span>
-    <button id="bindBtn" onclick="bind()">立即绑定</button>
-  </div>
-
-  <div class="tabs">
-    <div class="tab active" data-tab="codes" onclick="switchTab('codes')">礼包码</div>
-    <div class="tab" data-tab="mine" onclick="switchTab('mine')">我的记录</div>
+  <div class="nickbar">
+    <label for="nickname">你的游戏昵称</label>
+    <input id="nickname" maxlength="24" placeholder="请输入游戏昵称（即官方兑换身份）" autocomplete="off" />
+    <div class="hint">昵称仅保存在本机浏览器，用于一键兑换；已兑换的礼包码也会在本机记录。</div>
   </div>
 
   <div class="panels">
-    <!-- 礼包码面板 -->
-    <div class="panel active" id="panel-codes">
-      <div class="card">
-        <div class="codes-header">
-          <h2>当前生效的礼包码</h2>
-        </div>
-        <div id="codes"><span class="empty">加载中…</span></div>
+    <div class="card">
+      <div class="codes-header">
+        <h2>当前生效的礼包码</h2>
       </div>
-    </div>
-
-    <!-- 我的记录面板 -->
-    <div class="panel" id="panel-mine">
-      <div class="card">
-        <h2>我的兑换记录</h2>
-        <p class="desc">绑定后自动展示你的兑换进度。若换设备查询，可重新输入昵称。</p>
-        <div id="meBox"></div>
-        <input id="queryNick" maxlength="24" placeholder="输入游戏昵称查询" autocomplete="off" style="margin-top:12px" />
-        <button class="ghost" style="margin-top:12px" onclick="queryStatus()">查询记录</button>
-        <div id="statusBox"></div>
-      </div>
+      <div id="codes"><span class="empty">加载中…</span></div>
     </div>
   </div>
 
   <div class="foot">
-    仅调用官方公开兑换接口（redeem.bd2.pmang.cloud），奖励发放至游戏邮箱。<br/>
-    绑定有效期 14 天，到期后自动停止为你兑换新码，可重新绑定续期。<br/>
+    仅调用官方公开兑换接口，奖励发放至游戏邮箱。<br/>
     本工具与 NEOWIZ 无隶属关系，请遵守游戏服务条款，理性使用。
   </div>
 </div>
@@ -259,25 +157,19 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const ST_TEXT = {success:"已兑换",already:"已兑换过",pending:"排队中",failed:"失败",
-  invalid:"码无效",expired:"已过期",exceeded:"超上限",unavailable:"不可用",
-  bad_user:"昵称错误",error:"失败",canceled:"已取消"};
-
-// 绑定的昵称持久化到本地，刷新/重进后自动恢复绑定卡片与倒计时
-const LS_NICK='bd2_nick';
-
 // 防御 XSS：所有插入 innerHTML 的外部/用户派生内容都必须先过 esc()
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+// 昵称持久化到本地；已兑换的码也记在本地（key=码）
+const LS_NICK='bd2_nick';
+const LS_REDEEMED='bd2_redeemed';
+
+function getRedeemed(){try{return JSON.parse(localStorage.getItem(LS_REDEEMED)||'{}');}catch(e){return {};}}
+function markRedeemed(code){const m=getRedeemed();m[code]=Date.now();localStorage.setItem(LS_REDEEMED,JSON.stringify(m));}
 
 function toast(msg, ms){
   const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
   clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'), ms||2200);
-}
-function switchTab(name){
-  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
-  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id==='panel-'+name));
-  if(name==='codes') loadCodes();
-  if(name==='mine' && localStorage.getItem(LS_NICK)) queryStatus();
 }
 
 // 健壮请求：先读文本再解析，带超时，出错暴露真实 HTTP 状态码 + 原始片段
@@ -289,54 +181,21 @@ async function requestJson(url, method, body){
     if(body!==undefined){opt.headers['Content-Type']='application/json';opt.body=JSON.stringify(body);}
     const r=await fetch(url,opt);
     const text=await r.text();
-    if(!text) throw new Error(`服务器返回空响应（HTTP ${r.status}）。多为部署/代理在 POST 时掐断响应，请把状态码告知开发者。`);
+    if(!text) throw new Error(`服务器返回空响应（HTTP ${r.status}）`);
     let data;
     try{data=JSON.parse(text);}catch(e){throw new Error(`响应非合法 JSON（HTTP ${r.status}）：\n${text.slice(0,300)}`);}
     return {status:r.status,ok:r.ok,data};
   }finally{clearTimeout(timer);}
 }
 
-function fmtDate(iso){
-  if(!iso) return '';
-  const d=new Date(iso);
-  if(isNaN(d)) return iso;
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-}
 function fmtMD(iso){
   if(!iso) return '';
   const d=new Date(iso);
   if(isNaN(d)) return '';
   return `${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
-// 绑定剩余时间：服务端 expires_at 为 UTC 时间串（无时区后缀），解析时按 UTC 处理
-function _parseUTC(iso){
-  if(!iso) return null;
-  const s = /[zZ]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso + 'Z';
-  const d = new Date(s);
-  return isNaN(d) ? null : d;
-}
-// 返回 {text, expired}：还剩多久需要重新绑定；expired=true 表示已过期
-function remainingText(iso){
-  const exp = _parseUTC(iso);
-  if(!exp) return {text:'', expired:false};
-  const diff = exp - new Date();
-  if(diff <= 0){
-    const d = Math.floor(-diff / 86400000);
-    return {text: `已过期 ${d} 天，请重新绑定`, expired:true};
-  }
-  const days = Math.floor(diff / 86400000);
-  const hours = Math.floor((diff % 86400000) / 3600000);
-  const mins = Math.floor((diff % 3600000) / 60000);
-  let t;
-  if(days > 0) t = `还剩 ${days} 天 ${hours} 小时需重新绑定`;
-  else if(hours > 0) t = `还剩 ${hours} 小时 ${mins} 分钟需重新绑定`;
-  else t = `还剩 ${mins} 分钟需重新绑定`;
-  return {text:t, expired:false};
-}
 function daysLeft(iso){
   if(!iso) return '长期有效';
-  // 官方/源站给的是 UTC 日期（形如 2026-08-31）。仅含日期时按 UTC 零点解析，
-  // 避免用本地时区解析导致边界差一天。
   let exp;
   if(/^\d{4}-\d{2}-\d{2}$/.test(iso)) exp=new Date(iso+'T00:00:00Z');
   else exp=new Date(iso);
@@ -348,20 +207,14 @@ function daysLeft(iso){
   return `${diff}天后过期`;
 }
 
-// 是否含中文字符（用于区分 GameKee 中文源 与 英文抓取源）
-function _hasCJK(s){
-  return !!s && /[　-〿一-鿿＀-￯]/.test(s);
-}
-// 是否为「待官方验证且非中文」的码，或「官方已判失效/过期」的码（这类应沉到列表最底部）。
-// 置顶条件（满足任一即不算沉底）：来自 GameKee 中文权威源 / 奖励含中文 / 已被官方实测验证过(非 dead)。
+// 是否含中文字符（区分 GameKee 中文权威源 与 英文抓取源）
+function _hasCJK(s){return !!s && /[　-〿一-鿿＀-￯]/.test(s);}
 const _DEAD_OFF={expired:1,invalid:1,exceeded:1,unavailable:1};
 function _isBottomCode(c){
   const off=c.official_status||'pending';
-  if(_DEAD_OFF[off]) return true;   // 官方已判失效/过期/达上限/不可用 → 沉底
+  if(_DEAD_OFF[off]) return true;
   const pending=(off==='pending'||off===''||off==null);
-  const trusted=(c.source==='auto:gamekee')
-              || _hasCJK(c.reward_name) || _hasCJK(c.description)
-              || !pending;
+  const trusted=(c.source==='auto:gamekee')||_hasCJK(c.reward_name)||_hasCJK(c.description)||!pending;
   return !trusted;
 }
 
@@ -376,163 +229,42 @@ const ICONS={
 };
 const COPY_SVG='<svg viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="14" rx="2"/><path d="M16 7h3a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-3"/></svg>';
 
-function showMe(nick, player){
-  const box=document.getElementById('meBox');
-  box.dataset.nick=nick;
-  if(!player){
-    box.dataset.exp='';
-    box.innerHTML=`<div class="me unbound"><div class="ava">${esc(nick).slice(0,1).toUpperCase()}</div>
-      <div><div class="who">${esc(nick)}</div>
-      <div class="st-txt warn">未绑定或已过期 · 在上方输入昵称绑定即可自动兑换</div></div></div>`;
-    return;
-  }
-  box.dataset.exp=player.expires_at||'';
-  const exp=fmtDate(player.expires_at);
-  const cd=remainingText(player.expires_at);
-  box.innerHTML=`<div class="me"><div class="ava">${esc(nick).slice(0,1).toUpperCase()}</div>
-     <div><div class="who">${esc(nick)}<span class="unbind" onclick="clearBind()">切换昵称</span></div>
-     <div class="st-txt">✅ 已绑定 · 新礼包码将自动兑换</div>
-     <div class="exp">📅 有效期至 ${exp}</div>
-     <div class="cd ${cd.expired?'expired':''}" id="bindCountdown">⏳ ${cd.text}</div></div></div>`;
-}
-// 仅刷新倒计时文字（用于查询接口返回玩家信息后）
-function updateCountdown(expIso){
-  const box=document.getElementById('meBox');
-  box.dataset.exp=expIso||'';
-  const el=document.getElementById('bindCountdown');
-  if(!expIso || !el) return;
-  const cd=remainingText(expIso);
-  el.textContent='⏳ '+cd.text;
-  el.className='cd '+(cd.expired?'expired':'');
-}
-
-// 清除本地记住的昵称（切换账号）：清 localStorage + 重置绑定卡片
-function clearBind(){
-  localStorage.removeItem(LS_NICK);
-  const box=document.getElementById('meBox');
-  box.dataset.nick=''; box.dataset.exp=''; box.innerHTML='';
-  document.getElementById('queryNick').value='';
-  document.getElementById('nickname').value='';
-  document.getElementById('statusBox').innerHTML='';
-  // 必须重新拉一次：否则码卡片右上角还挂着上一个昵称的「已兑换」，看着像新昵称已兑换过
-  loadCodes();
-  toast('已清除本地绑定，可输入新昵称重新绑定');
-}
-
-async function bind(){
-  const nickname=document.getElementById('nickname').value.trim();
-  const btn=document.getElementById('bindBtn');
-  if(!nickname){toast('请输入游戏昵称');return;}
-  btn.disabled=true;btn.textContent='核对昵称中…';
-  try{
-    const {status,ok,data}=await requestJson('/api/bind','POST',{nickname});
-    if(!ok){
-      // 分情况给出可操作的提示，而不是笼统的「绑定失败」
-      if(status===404){
-        toast('❌ '+(data.detail||`游戏内找不到昵称「${nickname}」，请核对后重试`), 6000);
-      }else if(status===429){
-        toast('⏳ 绑定太频繁，请稍等片刻再试', 5000);
-      }else if(status===422){
-        toast('❌ 昵称格式不对：长度需为 1–24 个字符', 5000);
-      }else{
-        toast('绑定失败：'+(data.detail||JSON.stringify(data)), 5000);
-      }
-      btn.disabled=false;btn.textContent='立即绑定';
-      return;
-    }
-    localStorage.setItem(LS_NICK, nickname);
-    document.getElementById('queryNick').value=nickname;
-    showMe(nickname, data.player);
-
-    // 区分「首次绑定 / 续期」×「有无新排队的码」，四种情况分别说人话
-    const n=data.queued_history_codes??0;
-    let msg;
-    const r=data.retried_failed_codes??0;
-    if(data.is_new){
-      msg = n>0 ? `✅ 绑定成功！已排入 ${n} 个礼包码，正在后台自动兑换`
-                : '✅ 绑定成功！当前暂无可兑换的礼包码，出新码会自动帮你兑换';
-    }else if(n>0 && r>0){
-      msg = `✅ 已续期！新增 ${n} 个礼包码，另有 ${r} 个此前失败的码已重新排队`;
-    }else if(r>0){
-      msg = `✅ 已续期！${r} 个此前失败的礼包码已重新排队重试`;
-    }else{
-      msg = n>0 ? `✅ 已续期！新增 ${n} 个礼包码待兑换`
-                : '✅ 已续期！礼包码此前都已排过队，可在「我的」查看兑换结果';
-    }
-    if(data.nickname_verified===false) msg+='（昵称未能向官方核实，若兑换失败请检查昵称）';
-    toast(msg, 5000);
-
-    switchTab('mine');   // 内部已会触发 queryStatus，不重复调用
-    loadCodes();
-    // 后台兑换是异步的，绑定成功的瞬间几乎全是 pending。延迟回刷一次，
-    // 让玩家不用手动刷新就能看到真实结果（QPS 2.5，十来个码通常几秒内跑完）。
-    clearTimeout(window._afterBindTimer);
-    window._afterBindTimer=setTimeout(()=>{ queryStatus(); loadCodes(); }, 6000);
-  }catch(e){toast('绑定出错：'+e.message, 5000);}
-  btn.disabled=false;btn.textContent='立即绑定';
-}
-
 function copyCode(code){
-  const ok = (text)=>toast('已复制 '+text);
-  const fail = ()=>toast('复制失败，请长按手动复制');
-  // 优先用现代 Clipboard API（需要安全上下文 + 用户手势）
+  const ok=()=>toast('已复制 '+code);
+  const fail=()=>toast('复制失败，请长按手动复制');
   if(navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(code).then(()=>ok(code)).catch(()=>fallbackCopy(code, ok, fail));
-  } else {
-    fallbackCopy(code, ok, fail);
-  }
+    navigator.clipboard.writeText(code).then(ok).catch(()=>fallbackCopy(code,ok,fail));
+  } else { fallbackCopy(code,ok,fail); }
 }
-// 老浏览器 / 非 HTTPS / 部分移动端 的兜底方案
-function fallbackCopy(text, ok, fail){
+function fallbackCopy(text,ok,fail){
   try{
     const ta=document.createElement('textarea');
-    ta.value=text;
-    ta.style.cssText='position:fixed;top:-9999px;opacity:0';
-    document.body.appendChild(ta);
-    ta.focus(); ta.select();
-    const done=document.execCommand('copy');
+    ta.value=text;ta.style.cssText='position:fixed;top:-9999px;opacity:0';
+    document.body.appendChild(ta);ta.focus();ta.select();
+    document.execCommand('copy')?ok():fail();
     document.body.removeChild(ta);
-    done?ok(text):fail();
-  }catch(e){ fail(); }
+  }catch(e){fail();}
 }
 
-function renderCodes(list, participants, playerActive){
+function cssEscape(s){return String(s).replace(/["\\]/g,'\\$&');}
+
+function renderCodes(list){
   const box=document.getElementById('codes');
-  const countBox=document.getElementById('playerCount');
-  countBox.textContent=`已有${(participants||0).toLocaleString()}人参与`;
-  if(!list.length){box.innerHTML='<span class="empty">暂无兑换码</span>';return;}
-  // 稳定分区：待官方验证且非中文的码沉到最底部，其余保持原排序（最近更新在前）
+  const redeemed=getRedeemed();
+  if(!list.length){box.innerHTML='<span class="empty">暂无生效的礼包码</span>';return;}
   const ordered=list.slice().sort((a,b)=>(_isBottomCode(a)?1:0)-(_isBottomCode(b)?1:0));
   box.innerHTML=ordered.map(c=>{
-    // 上线时间：优先展示「码上线时间」；来源无法提供上线时间时留空 → 不展示该项
-    const upd=c.published_at ? `${fmtMD(c.published_at)}上线` : '';
-    // 优先采用官方实测状态：一旦 worker 核实码已过期/无效等，显示真实状态
+    const upd=c.published_at?`${fmtMD(c.published_at)}上线`:'';
     const off=c.official_status||'pending';
     const DEAD={expired:'已过期',invalid:'已失效',exceeded:'已达上限',unavailable:'暂不可用'};
-    let statusCls, statusText, exp;
-    if(DEAD[off]){ statusCls='dead'; statusText=DEAD[off]; exp=''; }
-    else {
-      // 若当前绑定昵称对该码有兑换记录，优先展示个人状态
-      const my=c.my_status;
-      if(my==='success' || my==='already'){ statusCls='success'; statusText='已兑换'; }
-      else if(my==='pending' || my==='network_error'){
-        // 绑定过期后后台不会再执行这些任务，继续显示「兑换中」等于让玩家白等
-        if(playerActive===false){ statusCls='stale'; statusText='待重新绑定'; }
-        else { statusCls='pending'; statusText='兑换中'; }
-      }
-      else if(my==='canceled'){ statusCls='dead'; statusText='已取消'; }
-      else if(my){ statusCls='failed'; statusText={bad_user:'昵称错误',error:'兑换失败'}[my]||'兑换失败'; }
-      else if(playerActive===false){ statusCls='stale'; statusText='待重新绑定'; }
-      else { const s=c.status||'active'; statusCls=s;
-             statusText={active:'待兑换',expired:'已过期',inactive:'已停用'}[s]||'待兑换'; }
-      exp=daysLeft(c.expires_at);
-    }
-    // 只有真正抓到/录入了奖励内容才显示图标+奖励区，否则留空（不显示无意义的空图标）
-    const hasReward=!!(c.reward_name || c.description);
+    let statusCls,statusText,exp;
+    if(DEAD[off]){statusCls='dead';statusText=DEAD[off];exp='';}
+    else{statusCls='active';statusText='待兑换';exp=daysLeft(c.expires_at);}
+    const isDone=!!redeemed[c.code];
+    const hasReward=!!(c.reward_name||c.description);
     const rawQty=c.reward_qty||'';
-    const qty=rawQty ? (rawQty.toLowerCase().startsWith('x')?rawQty:'x'+rawQty) : '';
-    // 优先展示 GameKee 提供的真实奖励图标；加载失败则回退到关键字 SVG 图标
-    const iconHtml = c.reward_icon_url
+    const qty=rawQty?(rawQty.toLowerCase().startsWith('x')?rawQty:'x'+rawQty):'';
+    const iconHtml=c.reward_icon_url
       ? `<img class="icon-img" src="${esc(c.reward_icon_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.outerHTML=ICONS['${(c.reward_icon||'gift')}']">`
       : (ICONS[c.reward_icon]||ICONS.gift);
     const rewardBlock=hasReward?`
@@ -543,12 +275,12 @@ function renderCodes(list, participants, playerActive){
           ${qty?`<div class="reward-qty">${qty}</div>`:''}
         </div>
       </div>`:'';
+    const btn=isDone
+      ? `<button class="redeem-btn done" disabled>已兑换 ✓</button>`
+      : `<button class="redeem-btn" data-code="${esc(c.code)}" onclick="redeem(this.dataset.code)">兑换</button>`;
     return `<div class="code-card${DEAD[off]?' dead':''}">
       <div class="meta-top">
-        <div class="dates">
-          ${upd?`<span class="upd">${upd}</span>`:''}
-          <span class="exp">${exp}</span>
-        </div>
+        <div class="dates">${upd?`<span class="upd">${upd}</span>`:''}<span class="exp">${exp}</span></div>
         <span class="status ${statusCls}">${esc(statusText)}</span>
       </div>
       ${rewardBlock}
@@ -556,6 +288,7 @@ function renderCodes(list, participants, playerActive){
         <span class="code-str">${esc(c.code)}</span>
         <button class="copy" data-code="${esc(c.code)}" onclick="copyCode(this.dataset.code)" aria-label="复制">${COPY_SVG}</button>
       </div>
+      <div class="actions">${btn}</div>
     </div>`;
   }).join('');
 }
@@ -566,84 +299,68 @@ function failHtml(msg){
 
 async function loadCodes(){
   const box=document.getElementById('codes');
-  const nick=localStorage.getItem(LS_NICK)||'';
-  const url=nick ? '/api/codes?nickname='+encodeURIComponent(nick) : '/api/codes';
   box.innerHTML='<span class="empty">加载中…</span>';
   try{
-    const {ok,data}=await requestJson(url,'GET');
+    const {ok,data}=await requestJson('/api/codes','GET');
     if(!ok){box.innerHTML=failHtml('加载失败');return;}
-    loadCodes._retried=false;   // 成功后清除自动重试标记
-    renderCodes(data.codes||[], data.participants, data.player_active);
+    loadCodes._retried=false;
+    renderCodes(data.codes||[]);
   }catch(e){
     box.innerHTML=failHtml('加载失败：'+e.message);
-    // 免费实例冷启动首请求易超时：自动重试一次，避免手机端「一直加载中」
-    if(!loadCodes._retried){
-      loadCodes._retried=true;
-      setTimeout(loadCodes, 5000);
-    }
+    if(!loadCodes._retried){loadCodes._retried=true;setTimeout(loadCodes,5000);}
   }
 }
 
-async function queryStatus(){
-  const nick=(document.getElementById('queryNick').value.trim()
-            || localStorage.getItem(LS_NICK) || '');
-  const box=document.getElementById('statusBox');
-  if(!nick){box.innerHTML='';toast('请先输入昵称或绑定');return;}
-  document.getElementById('queryNick').value=nick;
-  if(!document.getElementById('meBox').dataset.nick) showMe(nick, null);
-  box.innerHTML='<p class="empty">查询中…</p>';
+async function redeem(code){
+  const nickname=(document.getElementById('nickname').value||'').trim();
+  if(!nickname){
+    toast('请先在上方填写游戏昵称',4000);
+    document.getElementById('nickname').focus();
+    return;
+  }
+  localStorage.setItem(LS_NICK,nickname);
+  const btn=document.querySelector(`.redeem-btn[data-code="${cssEscape(code)}"]`);
+  if(btn){btn.disabled=true;btn.textContent='兑换中…';}
   try{
-    const {status,ok,data}=await requestJson('/api/status?nickname='+encodeURIComponent(nick),'GET');
+    const {status,ok,data}=await requestJson('/api/redeem','POST',{nickname,code});
     if(!ok){
-      const tip = status===422 ? '昵称格式不对，请重新输入'
-                : status>=500  ? '服务暂时不可用，请稍后重试'
-                : (data && data.detail) || `查询失败（HTTP ${status}）`;
-      box.innerHTML='<p class="empty">'+esc(tip)+'，<a class="retry" href="javascript:queryStatus()">重试</a></p>';
+      if(btn){btn.disabled=false;btn.textContent='兑换';}
+      toast('兑换失败：'+(data.detail||JSON.stringify(data)),5000);
       return;
     }
-    if(data.player) showMe(nick, data.player);   // 用真实 expires_at 渲染带倒计时的绑定卡片
-    if(!data.records.length){
-      // 没记录有两种原因，提示要分开：压根没绑过 vs 绑了但还在排队
-      box.innerHTML = data.player
-        ? '<p class="empty">已绑定，兑换任务仍在后台排队中，稍等片刻再来查。</p>'
-        : `<p class="empty">昵称「${esc(nick)}」尚未绑定过，请先在上方「绑定」页填写昵称完成绑定。</p>`;
-      return;
+    const st=data.status;
+    if(st==='success'){
+      markRedeemed(code);
+      toast('✅ 兑换成功！奖励已发送至游戏邮箱',4000);
+      loadCodes();
+    }else if(st==='already'){
+      markRedeemed(code);
+      toast('ℹ️ 该昵称已兑换过此礼包码',4000);
+      loadCodes();
+    }else if(st==='bad_user'){
+      if(btn){btn.disabled=false;btn.textContent='兑换';}
+      toast('❌ 游戏昵称错误，请核对后重试',6000);
+    }else{
+      if(btn){btn.disabled=false;btn.textContent='兑换';}
+      toast('❌ 兑换失败：'+(data.message||st),6000);
     }
-    let h='';
-    const order={success:0,already:0,pending:1,failed:2,invalid:2,expired:2,bad_user:2,error:2};
-    data.records.sort((a,b)=>(order[a.status]??9)-(order[b.status]??9));
-    for(const x of data.records){
-      const st=ST_TEXT[x.status]||x.status;
-      h+=`<div class="rec"><div><div class="code">${esc(x.code)}</div>
-          <div class="sub">${esc(x.message||'')}</div></div>
-          <span class="tag ${x.status}">${st}</span></div>`;
-    }
-    const succ=data.records.filter(r=>r.status==='success'||r.status==='already').length;
-    box.innerHTML=`<p class="desc" style="margin:4px 0 8px">共 ${data.records.length} 条 · 成功 ${succ} 条</p>`+h;
-  }catch(e){box.innerHTML='<p class="empty">查询失败：'+esc(e.message)+'，<a class="retry" href="javascript:queryStatus()">重试</a></p>';}
+  }catch(e){
+    if(btn){btn.disabled=false;btn.textContent='兑换';}
+    toast('兑换出错：'+e.message,5000);
+  }
 }
 
-// 回车快捷绑定
-document.getElementById('nickname').addEventListener('keypress', e=>{if(e.key==='Enter') bind();});
+// 昵称输入框回车聚焦 / 实时保存
+document.getElementById('nickname').addEventListener('input',e=>{
+  const v=e.target.value.trim();
+  if(v) localStorage.setItem(LS_NICK,v); else localStorage.removeItem(LS_NICK);
+});
 
-// 绑定倒计时每分钟刷新一次
-setInterval(()=>{
-  const box=document.getElementById('meBox');
-  const exp=box.dataset.exp;
-  const el=document.getElementById('bindCountdown');
-  if(exp && el){ const cd=remainingText(exp); el.textContent='⏳ '+cd.text; el.className='cd '+(cd.expired?'expired':''); }
-}, 60000);
-
-// 进入时检查连通性并预载礼包码
+// 进入时检查连通性并预载昵称 + 礼包码
 (async function init(){
-  try{ await requestJson('/api/health','GET'); }catch(e){ /* 静默 */ }
-  // 若本地记住了昵称，预填输入框并静默恢复绑定卡片与倒计时（刷新/重进后仍在）
+  try{await requestJson('/api/health','GET');}catch(e){/* 静默 */}
   const saved=localStorage.getItem(LS_NICK);
-  if(saved){
-    document.getElementById('nickname').value=saved;
-    document.getElementById('queryNick').value=saved;
-    queryStatus();
-  }
+  if(saved) document.getElementById('nickname').value=saved;
   loadCodes();
 })();
 </script>

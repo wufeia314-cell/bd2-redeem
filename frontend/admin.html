@@ -41,7 +41,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>🛠 BD2 礼包码自动兑换 · 管理后台</h1>
+  <h1>🛠 BD2 礼包码手动兑换 · 管理后台</h1>
 
   <div class="card">
     <div class="tokenbar">
@@ -55,7 +55,7 @@
   </div>
 
   <div class="card">
-    <h2>➕ 录入新礼包码（保存后自动为所有已绑定玩家兑换）</h2>
+    <h2>➕ 录入新礼包码（保存后展示给玩家手动兑换）</h2>
     <div class="row">
       <div><label>礼包码</label><input id="code" maxlength="20" placeholder="例如 BD2025SUMMER" /></div>
       <div><label>奖励名称</label><input id="creward" maxlength="64" placeholder="例如 5星招募券 / 抽 / 粉" /></div>
@@ -64,7 +64,7 @@
       <div><label>说明（可选）</label><input id="cdesc" maxlength="128" placeholder="例如 官方直播通用码" /></div>
       <div><label>过期时间（可选，ISO）</label><input id="cexp" placeholder="2026-12-31T23:59" /></div>
     </div>
-    <button onclick="addCode()">录入并触发自动兑换</button>
+    <button onclick="addCode()">录入礼包码</button>
     <div id="codeMsg" class="msg"></div>
   </div>
 
@@ -81,7 +81,7 @@
   <div class="card">
     <h2>🌐 社区兑换码自动抓取</h2>
     <p style="font-size:13px;color:var(--sub);margin:0 0 10px">
-      系统每 <b id="fetchInterval">每天</b> 自动从社区源抓取最新礼包码并入库（入库即自动兑换）。
+      系统每 <b id="fetchInterval">每天</b> 自动从社区源抓取最新礼包码并入库（入库后玩家即可手动兑换）。
       也可点击下方按钮立即执行一次。
     </p>
     <button onclick="runFetch()">立即抓取社区兑换码</button>
@@ -94,24 +94,10 @@
     <h2>📊 实时统计</h2>
     <div id="stats" class="stats"><span style="color:var(--sub)">请先连接</span></div>
   </div>
-
-  <div class="card">
-    <h2>👥 已绑定玩家（有效期内）</h2>
-    <button class="ghost" onclick="loadPlayers()">刷新玩家</button>
-    <div id="players"></div>
-  </div>
-
-  <div class="card">
-    <h2>📜 最近兑换记录</h2>
-    <button class="ghost" onclick="loadRedemptions()">刷新记录</button>
-    <div id="redemptions"></div>
-  </div>
 </div>
 
 <script>
-const ST_TEXT={success:"成功",already:"已兑换过",pending:"排队中",failed:"失败",
-  invalid:"码无效",expired:"已过期",exceeded:"超上限",unavailable:"不可用",bad_user:"昵称错误",
-  error:"失败",canceled:"已取消"};
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function token(){return document.getElementById('token').value.trim();}
 function H(){return {'Content-Type':'application/json','X-Admin-Token':token()};}
 
@@ -129,7 +115,7 @@ async function addCode(){
       body:JSON.stringify({code,reward_name,reward_qty,reward_icon,description,expires_at})});
     const d=await r.json();
     if(r.ok){msg.className='msg ok';
-      msg.textContent=`✅ 已录入「${code}」，为 ${d.queued_players} 位玩家排入兑换队列，后台自动执行中。`;
+      msg.textContent=`✅ 已录入「${code}」，玩家现可在兑换页手动兑换。`;
       document.getElementById('code').value='';document.getElementById('cdesc').value='';
       document.getElementById('creward').value='';document.getElementById('cqty').value='';
       document.getElementById('cicon').value='';document.getElementById('cexp').value='';
@@ -171,8 +157,6 @@ function renderAdminCodeTable(){
   box.innerHTML=h+'</table>';
 }
 
-function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-
 async function saveCodeRow(btn){
   const row=btn.closest('tr');
   const code=row.dataset.code;
@@ -193,7 +177,7 @@ async function saveCodeRow(btn){
 async function deleteCode(btn){
   const row=btn.closest('tr');
   const code=row.dataset.code;
-  if(!confirm('确定删除 '+code+'？关联兑换记录也会被级联删除。')) return;
+  if(!confirm('确定删除 '+code+'？')) return;
   const msg=document.getElementById('codeEditMsg');msg.className='msg';
   try{
     const r=await fetch('/admin/codes/'+encodeURIComponent(code),{method:'DELETE',headers:H()});
@@ -208,58 +192,21 @@ async function loadStats(){
   try{
     const r=await fetch('/admin/stats',{headers:H()});
     if(r.status===401){box.innerHTML='<span style="color:var(--err)">令牌无效</span>';return false;}
-    const d=await r.json();const by=d.redemptions_by_status||{};
-    let cells=`<div class="stat"><div class="n">${d.players}</div><div class="l">已绑定玩家</div></div>
-      <div class="stat"><div class="n">${d.codes}</div><div class="l">生效礼包码</div></div>`;
-    for(const k of ['pending','success','already','failed','invalid','expired','bad_user']){
-      if(by[k])cells+=`<div class="stat"><div class="n">${by[k]}</div><div class="l">${ST_TEXT[k]||k}</div></div>`;
+    const d=await r.json();const by=d.by_official_status||{};
+    let cells=`<div class="stat"><div class="n">${d.codes}</div><div class="l">生效礼包码</div></div>
+      <div class="stat"><div class="n">${d.total_codes}</div><div class="l">礼包码总数</div></div>`;
+    const LABEL={pending:'待官方验证',valid:'官方有效',expired:'官方过期',invalid:'官方无效',exceeded:'达上限',unavailable:'暂不可用'};
+    for(const k of Object.keys(by)){
+      if(by[k])cells+=`<div class="stat"><div class="n">${by[k]}</div><div class="l">${LABEL[k]||k}</div></div>`;
     }
     box.innerHTML=cells;return true;
   }catch(e){box.innerHTML='<span style="color:var(--err)">加载失败：'+e+'</span>';return false;}
 }
 
-async function loadRedemptions(){
-  const box=document.getElementById('redemptions');
-  try{
-    const r=await fetch('/admin/redemptions?limit=200',{headers:H()});
-    if(r.status===401){box.innerHTML='<p style="color:var(--err)">令牌无效</p>';return;}
-    const d=await r.json();
-    if(!d.records.length){box.innerHTML='<p style="color:var(--sub);font-size:13px">暂无记录</p>';return;}
-    let h='<table><tr><th>游戏昵称</th><th>礼包码</th><th>状态</th><th>尝试</th><th>说明</th><th>更新时间</th></tr>';
-    for(const x of d.records){
-      h+=`<tr><td>${esc(x.nickname||'-')}</td>
-        <td style="font-family:monospace">${esc(x.code)}</td>
-        <td class="st ${x.status}">${ST_TEXT[x.status]||x.status}</td>
-        <td>${x.attempts}</td><td style="color:var(--sub)">${esc(x.message||'')}</td>
-        <td style="color:var(--sub)">${(x.updated_at||'').replace('T',' ').slice(0,19)}</td></tr>`;
-    }
-    box.innerHTML=h+'</table>';
-  }catch(e){box.innerHTML='<p style="color:var(--err)">加载失败：'+e+'</p>';}
-}
-
-async function loadPlayers(){
-  const box=document.getElementById('players');
-  try{
-    const r=await fetch('/admin/players',{headers:H()});
-    if(r.status===401){box.innerHTML='<p style="color:var(--err)">令牌无效</p>';return;}
-    const d=await r.json();
-    if(!d.players.length){box.innerHTML='<p style="color:var(--sub);font-size:13px">暂无玩家</p>';return;}
-    let h='<table><tr><th>游戏昵称</th><th>备注</th><th>有效期至</th><th>状态</th></tr>';
-    for(const x of d.players){
-      const active = x.active==1 && new Date(x.expires_at) > new Date();
-      h+=`<tr><td>${esc(x.nickname||'-')}</td>
-        <td style="color:var(--sub)">${esc(x.note||'')}</td>
-        <td style="color:var(--sub)">${(x.expires_at||'').replace('T',' ').slice(0,19)}</td>
-        <td class="st ${active?'success':'error'}">${active?'有效期内':'已过期/停用'}</td></tr>`;
-    }
-    box.innerHTML=h+'</table>';
-  }catch(e){box.innerHTML='<p style="color:var(--err)">加载失败：'+e+'</p>';}
-}
-
 async function refreshAll(){
   const msg=document.getElementById('tokenMsg');msg.className='msg';
   const ok=await loadStats();
-  if(ok){msg.className='msg ok';msg.textContent='✅ 已连接';loadPlayers();loadRedemptions();loadSources();loadAdminCodes();}
+  if(ok){msg.className='msg ok';msg.textContent='✅ 已连接';loadSources();loadAdminCodes();}
   else{msg.className='msg err';msg.textContent='连接失败，请检查令牌';}
 }
 
@@ -272,7 +219,7 @@ async function runFetch(){
     if(r.ok){
       const per=Object.entries(d.sources||{}).map(([k,v])=>`${k}: ${v}`).join('，');
       msg.className='msg ok';
-      msg.textContent=`✅ 抓取完成：候选 ${d.total_candidates} 个，新入库并触发兑换 ${d.new_codes_enqueued} 个。各源(${per})`;
+      msg.textContent=`✅ 抓取完成：候选 ${d.total_candidates} 个，新入库 ${d.new_codes_added} 个。各源(${per})`;
     } else {msg.className='msg err';msg.textContent='失败：'+(d.detail||JSON.stringify(d));}
   }catch(e){msg.className='msg err';msg.textContent='网络错误：'+e;}
 }

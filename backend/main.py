@@ -1,4 +1,4 @@
-"""FastAPI 主程序：玩家绑定 + 管理员录码 + 社区自动抓取 + 自动兑换触发 + 统计。
+"""FastAPI 主程序：礼包码展示 + 手动兑换 + 管理员录码 + 社区自动抓取。
 
 运行：
     cd backend
@@ -6,8 +6,13 @@
     export BD2_ADMIN_TOKEN="你的强口令"   # 务必修改默认令牌
     python run.py                        # 默认监听 0.0.0.0:8000，公网/局域网可访问
 
-玩家端：  http://<本机IP或域名>:8000/
-管理端：  http://<本机IP或域名>:8000/admin
+玩家端：  http://<本机IP或域名>:8000/       —— 查看当前生效礼包码，填入昵称手动兑换
+管理端：  http://<本机IP或域名>:8000/admin  —— 录码、抓取、查看统计
+
+设计要点（手动兑换模式 v2）：
+- 不再做「玩家绑定 + 后台自动兑换队列」。玩家在前端点「兑换」，即时调官方接口。
+- 玩家昵称与「已兑换」记录由前端 localStorage 持久化，服务端不存，彻底规避 Render 临时磁盘失效。
+- 服务端只持久化礼包码清单 + 官方实测状态（official_status），启动即自动抓取，重启丢失也无妨。
 """
 from __future__ import annotations
 
@@ -28,76 +33,9 @@ import config
 import db
 import fetcher
 import redeemer
-import worker
 
 
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
-
-# ---------------- 玩家绑定限流（防滥用）----------------
-# IP -> 最近绑定时间戳列表；每个 IP 每分钟最多 10 次
-_BIND_LIMIT = 10
-_BIND_WINDOW = 60.0
-_bind_hits: dict[str, list[float]] = {}
-_bind_lock = threading.Lock()
-
-
-def _client_ip(request: Request) -> str:
-    # 部署在反代/负载均衡（如 Render、Nginx）之后时，request.client.host 是内网地址，
-    # 所有用户会被误判为同一 IP。优先取 X-Forwarded-For 的第一个真实地址。
-    fwd = request.headers.get("X-Forwarded-For", "")
-    if fwd:
-        return fwd.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
-
-
-def _bind_allowed(request: Request) -> bool:
-    ip = _client_ip(request)
-    now = time.monotonic()
-    with _bind_lock:
-        hits = _bind_hits.get(ip, [])
-        hits = [t for t in hits if now - t < _BIND_WINDOW]
-        if len(hits) >= _BIND_LIMIT:
-            _bind_hits[ip] = hits
-            return False
-        hits.append(now)
-        _bind_hits[ip] = hits
-        # 顺带回收长期不活跃 IP 的条目，避免字典无上限增长（长跑进程的内存泄漏点）
-        if len(_bind_hits) > 5000:
-            for k in [k for k, v in _bind_hits.items() if not v or now - v[-1] > _BIND_WINDOW]:
-                _bind_hits.pop(k, None)
-        return True
-
-
-# ---------------- 昵称核实结果缓存 ----------------
-# 绑定时会向官方发一次「假码探测」请求。若不缓存，同一玩家反复绑定/续期都会打一次官方，
-# 大量无效码请求既浪费又可能触发官方风控封掉本服务出口 IP（那会导致所有人都兑换不了）。
-# 存在的昵称缓存久一些；不存在的缓存短一些（玩家可能刚改名或刚建号，要给他很快重试的机会）。
-_NICK_TTL_OK = 6 * 3600.0
-_NICK_TTL_BAD = 600.0
-_nick_cache: dict[str, tuple[bool, float]] = {}
-_nick_lock = threading.Lock()
-
-
-def _verify_nickname_cached(nickname: str) -> tuple[bool | None, str]:
-    """带缓存的昵称核实。返回值语义同 redeemer.verify_nickname。
-
-    网络异常（None）不写缓存——那不是结论，下次应重新探测。
-    """
-    now = time.monotonic()
-    with _nick_lock:
-        hit = _nick_cache.get(nickname)
-        if hit and now < hit[1]:
-            return hit[0], "（命中本地缓存）"
-
-    exists, why = redeemer.verify_nickname(nickname)
-
-    if exists is not None:
-        with _nick_lock:
-            _nick_cache[nickname] = (exists, now + (_NICK_TTL_OK if exists else _NICK_TTL_BAD))
-            if len(_nick_cache) > 5000:  # 简单容量保护
-                for k in [k for k, v in _nick_cache.items() if now >= v[1]]:
-                    _nick_cache.pop(k, None)
-    return exists, why
 
 
 # ---------------- 社区自动抓取调度（后台线程）----------------
@@ -124,12 +62,12 @@ def _fetch_loop() -> None:
 
 
 def _run_fetch() -> dict:
-    """抓取全部源并把新码入库（入库即触发自动兑换）。返回统计。"""
+    """抓取全部源并把新码入库（仅入库展示，不再触发自动兑换）。返回统计。"""
     result = fetcher.fetch_all(config.COUPON_SOURCES)
     added = 0
     for c in result.get("codes", []):
         try:
-            row, queued = db.add_code_and_enqueue(
+            row = db.add_code(
                 c["code"],
                 c.get("description", ""),
                 c.get("reward_name", ""),
@@ -140,13 +78,12 @@ def _run_fetch() -> dict:
                 source=c.get("source") or "auto:community",
                 published_at=c.get("published_at"),
             )
-            # 新入库：created_at == updated_at 说明是本次插入的新行；
-            # queued>0 说明有玩家被排入兑换队列（兼容 players 非空的情况）
-            if (row.get("created_at") == row.get("updated_at")) or queued > 0:
+            # 新入库：created_at == updated_at 说明是本次插入的新行
+            if row.get("created_at") == row.get("updated_at"):
                 added += 1
         except Exception as exc:  # noqa: BLE001
             print(f"[scheduler] 入库失败 {c['code']}: {exc}")
-    result["new_codes_enqueued"] = added
+    result["new_codes_added"] = added
     print(f"[scheduler] 抓取完成：候选 {result['total_candidates']} 个，新入库 {added} 个")
     return result
 
@@ -175,14 +112,12 @@ async def lifespan(app: FastAPI):
     if config.ADMIN_TOKEN == "change-me-admin-token":
         print("[SECURITY] 警告：正在使用默认管理员令牌 change-me-admin-token！"
               "请通过环境变量 BD2_ADMIN_TOKEN 设置一个强口令，否则管理后台形同裸奔。")
-    worker.start()        # 启动后台限速兑换线程
     _start_fetch_loop()   # 启动社区自动抓取调度
     yield
     _stop_fetch_loop()
-    worker.stop()
 
 
-app = FastAPI(title="BD2 礼包码自动兑换系统", version="1.1", lifespan=lifespan)
+app = FastAPI(title="BD2 礼包码手动兑换系统", version="2.0", lifespan=lifespan)
 
 
 # ---------------- 全局异常处理器：保证任何错误都返回合法 JSON，绝不空 body ----------------
@@ -198,7 +133,6 @@ async def _validation_exc_handler(request: Request, exc: RequestValidationError)
 
 @app.exception_handler(Exception)
 async def _unhandled_exc_handler(request: Request, exc: Exception):
-    # 服务端任何未捕获异常都返回 JSON，避免部署/代理层收到空 body 再被浏览器 r.json() 解析报 SyntaxError
     print(f"[ERROR] 未处理异常于 {request.url.path}: {exc}")
     return JSONResponse(status_code=500, content={"ok": False, "detail": f"服务器内部错误：{exc}"})
 
@@ -210,9 +144,11 @@ def health():
 
 
 # ---------------- 请求模型 ----------------
-class BindReq(BaseModel):
-    nickname: str = Field(..., min_length=1, max_length=24, description="游戏昵称（即官方兑换身份 userId）")
-    note: str = Field("", max_length=64)
+class RedeemReq(BaseModel):
+    # 不为字段加 min_length，让空/纯空格走到下面的显式校验，返回 400 + 中文提示，
+    # 而不是 Pydantic 的 422（那样客户端拿不到友好文案）。
+    nickname: str = Field("", max_length=24, description="游戏昵称（即官方兑换身份 userId）")
+    code: str = Field("", max_length=20, description="要兑换的礼包码")
 
 
 class CodeReq(BaseModel):
@@ -233,88 +169,51 @@ def require_admin(x_admin_token: str = Header(default="")) -> None:
 
 
 # ---------------- 玩家端 ----------------
-@app.post("/api/bind")
-def bind(req: BindReq, request: Request):
-    """玩家用游戏昵称绑定。绑定后自动为其补齐所有历史激活礼包码，有效期 14 天。"""
-    if not _bind_allowed(request):
-        raise HTTPException(status_code=429, detail="绑定过于频繁，请稍后再试")
-
-    nickname = (req.nickname or "").strip()
-    # 先向官方核实昵称是否真实存在：用假码探测，不消耗任何真实礼包码。
-    # 昵称不存在时直接拦下，避免玩家绑了个错名字、之后所有兑换全部失败还不知道为什么。
-    exists, why = _verify_nickname_cached(nickname)
-    if exists is False:
-        raise HTTPException(
-            status_code=404,
-            detail=f"游戏内找不到昵称「{nickname}」，请核对后重试（注意区分大小写、空格与特殊符号）",
-        )
-
-    player = db.add_player(nickname, req.note)
-    is_new = bool(player.pop("_is_new", True))
-    # 「重新绑定」应当是玩家唯一的自救手段：把此前因网络故障/昵称填错而失败的记录放回队列。
-    # 不做这一步的话，INSERT OR IGNORE 会让那些记录永远停在失败态。
-    retried = 0 if is_new else db.reset_retriable_redemptions(player["id"])
-    queued = db.enqueue_all_codes_for_player(player["id"])
-    return {
-        "ok": True,
-        "player": player,
-        "is_new": is_new,                     # True=首次绑定，False=续期
-        "nickname_verified": exists is True,  # False 表示核实时网络异常，已降级放行
-        "queued_history_codes": queued,
-        "retried_failed_codes": retried,      # 续期时重新排队的历史失败码数
-        "participants": db.get_participant_count(),
-    }
-
-
 @app.get("/api/codes")
-def public_codes(nickname: str | None = None):
-    """公开：查看当前礼包码列表（始终隐藏过期/失效码）和参与者总数（基数+实际绑定）。
-    若提供 nickname，则在每个码里附加 my_status（该昵称对此码的兑换状态）。"""
+def public_codes():
+    """公开：查看当前生效的礼包码列表（始终隐藏过期/失效码）。"""
     codes = db.list_codes(active_only=True, include_expired=False)
-    # None = 未提供昵称；True = 绑定有效；False = 从未绑定或绑定已过期
-    player_active = None
-    if nickname and nickname.strip():
-        nk = nickname.strip()
-        my_statuses = db.get_player_code_statuses(nk)
-        for c in codes:
-            c["my_status"] = my_statuses.get(c["code"])
-        # 绑定过期的玩家不会再被 worker 取任务（get_pending_jobs 过滤过期玩家），
-        # 其残留的 pending 若仍显示「兑换中」就是在骗人，前端需据此改口为「待重新绑定」。
-        player_active = db.get_player_by_nickname(nk) is not None
-    return {
-        "codes": codes,
-        "participants": db.get_participant_count(),
-        "player_active": player_active,
-    }
+    return {"codes": codes}
 
 
-@app.get("/api/status")
-def my_status(nickname: str):
-    """玩家用游戏昵称查询自己的兑换情况。
+@app.post("/api/redeem")
+def redeem(req: RedeemReq):
+    """玩家手动兑换：用游戏昵称 + 礼包码即时调用官方接口，返回最终结果。
 
-    昵称作为 query 参数传递（而非 path 参数）：昵称可能包含 '/' 等字符，
-    若用 path 参数会被路由当成路径分隔符导致 404（FastAPI 对 %2F 的已知限制）。
+    不做「预先探测昵称」——昵称对错由官方直接判定（bad_user），玩家即时看到反馈，
+    比「绑定期拦截」更直接；也避免无谓的官方探测请求触发风控。
     """
-    records = db.get_player_redemptions(nickname.strip(), limit=1000)
-    player = db.get_player_any(nickname.strip())
-    return {"nickname": nickname.strip(), "player": player, "records": records}
+    nickname = (req.nickname or "").strip()
+    code = (req.code or "").strip().upper()
+    if not nickname:
+        raise HTTPException(status_code=400, detail="请填写游戏昵称")
+    if not code:
+        raise HTTPException(status_code=400, detail="礼包码不能为空")
+
+    result = redeemer.redeem_with_retry(nickname, code)
+    # 码级错误（与玩家无关，纯粹是码本身问题）→ 回写为社区共享的官方状态，
+    # 让其他玩家看到真实状态，不再徒劳尝试该码。
+    if result.status in ("expired", "invalid", "exceeded", "unavailable"):
+        try:
+            db.mark_code_official_status(code, result.status)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[redeem] 回写官方状态出错 {code}: {exc}")
+    return {
+        "ok": result.is_success or result.status == "already",
+        "status": result.status,
+        "message": result.message,
+    }
 
 
 # ---------------- 管理端 ----------------
 @app.post("/admin/codes", dependencies=[Depends(require_admin)])
 def admin_add_code(req: CodeReq):
-    """管理员录入新礼包码 → 立即为所有已绑定玩家生成 pending 任务，后台自动兑换。"""
-    code, queued = db.add_code_and_enqueue(
-        req.code,
-        req.description,
-        req.reward_name,
-        req.reward_qty,
-        req.reward_icon,
-        req.reward_icon_url,
-        req.expires_at,
-        req.source,
+    """管理员录入新礼包码。"""
+    code = db.add_code(
+        req.code, req.description, req.reward_name, req.reward_qty,
+        req.reward_icon, req.reward_icon_url, req.expires_at, req.source,
     )
-    return {"ok": True, "code": code, "queued_players": queued}
+    return {"ok": True, "code": code}
 
 
 class CodeUpdateReq(BaseModel):
@@ -341,16 +240,12 @@ def admin_update_code(code: str, req: CodeUpdateReq):
     row = db.update_code(code, **payload)
     if not row:
         raise HTTPException(status_code=404, detail="礼包码不存在")
-    # 管理员把码改回可用（重新激活 / 重置官方状态 / 延长有效期）后，必须把此前因该码
-    # 失效而被取消的任务放回队列，并给尚未排过队的玩家补齐——否则这些玩家会永远漏兑此码。
-    revived = db.revive_canceled_for_code(row["id"])
-    queued = db.enqueue_redemptions_for_code(row["id"])
-    return {"ok": True, "code": row, "revived": revived, "queued": queued}
+    return {"ok": True, "code": row}
 
 
 @app.delete("/admin/codes/{code}", dependencies=[Depends(require_admin)])
 def admin_delete_code(code: str):
-    """管理员删除礼包码及其关联兑换记录。"""
+    """管理员删除礼包码。"""
     ok = db.delete_code(code)
     if not ok:
         raise HTTPException(status_code=404, detail="礼包码不存在")
@@ -359,7 +254,7 @@ def admin_delete_code(code: str):
 
 @app.post("/admin/codes/{code}/deactivate", dependencies=[Depends(require_admin)])
 def admin_deactivate_code(code: str):
-    """管理员去激活某个礼包码（如自动抓到失效/无效码）。"""
+    """管理员去激活某个礼包码。"""
     ok = db.deactivate_code(code)
     return {"ok": ok}
 
@@ -382,19 +277,7 @@ def admin_sources():
 
 @app.get("/admin/stats", dependencies=[Depends(require_admin)])
 def admin_stats():
-    s = db.stats()
-    s["participants"] = db.get_participant_count()
-    return s
-
-
-@app.get("/admin/redemptions", dependencies=[Depends(require_admin)])
-def admin_redemptions(limit: int = 100):
-    return {"records": db.recent_redemptions(limit=limit)}
-
-
-@app.get("/admin/players", dependencies=[Depends(require_admin)])
-def admin_players():
-    return {"players": db.list_players(active_only=False)}
+    return db.stats()
 
 
 # ---------------- 前端静态页 ----------------
