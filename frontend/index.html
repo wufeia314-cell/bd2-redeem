@@ -27,7 +27,7 @@
   html{background:#f6f2ec}
   body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
     background:url('/static/bg.webp') center/cover no-repeat;
-    opacity:.22;filter:blur(2px);transform:scale(1.06)}
+    opacity:.18}
   body::after{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
     background:
       radial-gradient(120% 55% at 50% -12%, rgba(255,246,234,.42) 0%, transparent 55%),
@@ -52,9 +52,8 @@
         text-shadow:0 1px 5px rgba(0,0,0,.32)}
 
   /* ===== 昵称栏 ===== */
-  .nickbar{position:relative;z-index:10;background:rgba(255,255,255,.90);border:1px solid var(--line);
-           border-radius:var(--radius);padding:14px 16px;margin:-22px 16px 0;box-shadow:var(--shadow);
-           backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+  .nickbar{position:relative;z-index:10;background:#fff;border:1px solid var(--line);
+           border-radius:var(--radius);padding:14px 16px;margin:-22px 16px 0;box-shadow:var(--shadow)}
   .nickbar label{display:block;font-size:12px;color:var(--sub);margin-bottom:7px}
   .nickbar input{width:100%;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:15px;
                  outline:none;background:#fff;color:var(--txt);box-sizing:border-box}
@@ -63,19 +62,17 @@
 
   /* ===== 面板 ===== */
   .panels{flex:1;padding:18px 16px 0}
-  .card{background:rgba(255,255,255,.90);border:1px solid var(--line);border-radius:var(--radius);padding:18px;
-        box-shadow:var(--shadow-sm);margin-bottom:16px;
-        backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+  .card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:18px;
+        box-shadow:var(--shadow-sm);margin-bottom:16px}
   .card h2{margin:0 0 2px;font-size:15px;font-weight:800;letter-spacing:.2px;display:flex;align-items:center;gap:6px}
 
   /* 礼包码卡片网格 */
   .codes-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
   .codes-header h2{margin:0;font-size:15px;font-weight:800;letter-spacing:.2px}
   .code-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-  .code-card{background:rgba(255,255,255,.88);border:1px solid var(--line);border-radius:14px;padding:11px 11px 10px;
+  .code-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:11px 11px 10px;
              box-shadow:var(--shadow-sm);display:flex;flex-direction:column;gap:8px;position:relative;
-             transition:transform .12s,box-shadow .2s;animation:cardIn .3s ease both;
-             backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+             transition:transform .12s,box-shadow .2s;animation:cardIn .3s ease both}
   @keyframes cardIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
   .code-card:active{transform:translateY(-2px);box-shadow:var(--shadow)}
   .code-card .meta-top{display:flex;justify-content:space-between;align-items:flex-start;gap:5px}
@@ -88,6 +85,7 @@
   .code-card .status.inactive{background:var(--err-bg);color:var(--err)}
   .code-card.dead{opacity:.55}
   .code-card .status.dead{background:#eee;color:#999}
+  .code-card .status.claimed{background:#f1f1f1;color:#9a9a9a}
   .code-card .body{display:flex;align-items:center;gap:9px}
   .code-card .icon{width:40px;height:40px;border-radius:11px;background:linear-gradient(135deg,var(--chip),var(--chip-l));
                    display:flex;align-items:center;justify-content:center;flex:0 0 40px}
@@ -164,7 +162,8 @@ const LS_REDEEMED='bd2_redeemed';
 const state={codes:[]};  // 当前展示的礼包码列表，供「一键兑换全部」遍历
 
 function getRedeemed(){try{return JSON.parse(localStorage.getItem(LS_REDEEMED)||'{}');}catch(e){return {};}}
-function markRedeemed(code){const m=getRedeemed();m[code]=Date.now();localStorage.setItem(LS_REDEEMED,JSON.stringify(m));}
+function markRedeemed(code, kind){const m=getRedeemed();m[code]={t:Date.now(),kind:kind||'done'};localStorage.setItem(LS_REDEEMED,JSON.stringify(m));}
+function redeemedKind(code){const v=getRedeemed()[code];if(!v)return null;return (v&&typeof v==='object'&&v.kind)?v.kind:'done';}
 
 function toast(msg, ms){
   const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
@@ -258,7 +257,11 @@ function renderCodes(list){
     const DEAD={expired:'已过期',invalid:'已失效',exceeded:'已达上限',unavailable:'暂不可用'};
     const isDone=!!redeemed[c.code];
     let statusCls,statusText,exp;
-    if(isDone){statusCls='active';statusText='已兑换 ✓';exp='';}
+    if(isDone){
+      if(redeemedKind(c.code)==='already'){statusCls='claimed';statusText='已领过';}
+      else{statusCls='active';statusText='已兑换 ✓';}
+      exp='';
+    }
     else if(DEAD[off]){statusCls='dead';statusText=DEAD[off];exp='';}
     else{statusCls='active';statusText='待兑换';exp=daysLeft(c.expires_at);}
     const hasReward=!!(c.reward_name||c.description);
@@ -354,7 +357,7 @@ async function redeemAll(){
     try{
       const {ok,data,st}=await callRedeem(nickname,c.code);
       if(st==='success'||st==='already'){
-        markRedeemed(c.code);
+        markRedeemed(c.code, st==='already'?'already':'done');
         if(st==='success') success++; else already++;
       }else if(st==='bad_user'){
         failed++;
@@ -371,7 +374,7 @@ async function redeemAll(){
   btn.disabled=false;
   btn.textContent='一键兑换全部';
   loadCodes();
-  toast(`兑换完成：成功 ${success} / 已兑换 ${already} / 失败 ${failed}`,5000);
+  toast(`兑换完成：成功 ${success} / 已领过 ${already} / 失败 ${failed}`,5000);
 }
 
 // 昵称输入框回车聚焦 / 实时保存
