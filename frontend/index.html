@@ -111,6 +111,11 @@
   .redeem-btn:active{transform:scale(.97)}
   .redeem-btn:disabled{opacity:.6;cursor:default}
   .redeem-btn.done{background:#e8f6ed;color:var(--ok);box-shadow:none;border:1px solid #bfe6cd}
+  .redeem-all-btn{width:100%;margin-top:12px;padding:13px;border:0;border-radius:12px;cursor:pointer;
+             background:linear-gradient(135deg,#7a4a22,#9a5e2c);color:#fff;font-size:15px;font-weight:800;
+             letter-spacing:.5px;box-shadow:0 4px 14px rgba(122,74,34,.3);transition:transform .12s,opacity .2s}
+  .redeem-all-btn:active{transform:scale(.98)}
+  .redeem-all-btn:disabled{opacity:.65;cursor:default}
   .empty{display:block;color:var(--sub);font-size:13px;padding:14px 0;text-align:center;line-height:1.7}
   .empty a,.retry{color:var(--accent);font-weight:700;text-decoration:none;border-bottom:1px dashed currentColor;cursor:pointer}
 
@@ -130,13 +135,14 @@
   <div class="hero">
     <span class="badge">BD2 · 礼包码兑换</span>
     <h1>🎁 礼包码兑换</h1>
-    <p>填写你的游戏昵称，点击礼包码卡片上的「兑换」按钮，即可一键领取奖励到游戏邮箱。</p>
+    <p>填写游戏昵称后，点下方「一键兑换全部」可一次性领取所有礼包码；也可单独点击每张卡的「兑换」。</p>
   </div>
 
   <div class="nickbar">
     <label for="nickname">你的游戏昵称</label>
     <input id="nickname" maxlength="24" placeholder="请输入游戏昵称（即官方兑换身份）" autocomplete="off" />
     <div class="hint">昵称仅保存在本机浏览器，用于一键兑换；已兑换的礼包码也会在本机记录。</div>
+    <button id="redeemAllBtn" class="redeem-all-btn" onclick="redeemAll()">一键兑换全部</button>
   </div>
 
   <div class="panels">
@@ -163,6 +169,7 @@ function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'
 // 昵称持久化到本地；已兑换的码也记在本地（key=码）
 const LS_NICK='bd2_nick';
 const LS_REDEEMED='bd2_redeemed';
+const state={codes:[]};  // 当前展示的礼包码列表，供「一键兑换全部」遍历
 
 function getRedeemed(){try{return JSON.parse(localStorage.getItem(LS_REDEEMED)||'{}');}catch(e){return {};}}
 function markRedeemed(code){const m=getRedeemed();m[code]=Date.now();localStorage.setItem(LS_REDEEMED,JSON.stringify(m));}
@@ -304,13 +311,30 @@ async function loadCodes(){
     const {ok,data}=await requestJson('/api/codes','GET');
     if(!ok){box.innerHTML=failHtml('加载失败');return;}
     loadCodes._retried=false;
-    renderCodes(data.codes||[]);
+    const codes=data.codes||[];
+    state.codes=codes;
+    renderCodes(codes);
   }catch(e){
     box.innerHTML=failHtml('加载失败：'+e.message);
     if(!loadCodes._retried){loadCodes._retried=true;setTimeout(loadCodes,5000);}
   }
 }
 
+// 底层兑换请求：只发请求、返回原始结果，由调用方解释
+async function callRedeem(nickname, code){
+  const {status,ok,data}=await requestJson('/api/redeem','POST',{nickname,code});
+  return {ok,status,data,st:(data&&data.status)};
+}
+
+// 更新某张码卡片上的兑换按钮视觉
+function setBtn(code, text, disabled, done){
+  const btn=document.querySelector(`.redeem-btn[data-code="${cssEscape(code)}"]`);
+  if(!btn) return;
+  if(done){btn.classList.add('done');btn.textContent='已兑换 ✓';btn.disabled=true;}
+  else {btn.textContent=text;btn.disabled=disabled;}
+}
+
+// 单码兑换（卡片上的「兑换」按钮）
 async function redeem(code){
   const nickname=(document.getElementById('nickname').value||'').trim();
   if(!nickname){
@@ -322,13 +346,12 @@ async function redeem(code){
   const btn=document.querySelector(`.redeem-btn[data-code="${cssEscape(code)}"]`);
   if(btn){btn.disabled=true;btn.textContent='兑换中…';}
   try{
-    const {status,ok,data}=await requestJson('/api/redeem','POST',{nickname,code});
+    const {ok,data,st}=await callRedeem(nickname,code);
     if(!ok){
       if(btn){btn.disabled=false;btn.textContent='兑换';}
       toast('兑换失败：'+(data.detail||JSON.stringify(data)),5000);
       return;
     }
-    const st=data.status;
     if(st==='success'){
       markRedeemed(code);
       toast('✅ 兑换成功！奖励已发送至游戏邮箱',4000);
@@ -348,6 +371,58 @@ async function redeem(code){
     if(btn){btn.disabled=false;btn.textContent='兑换';}
     toast('兑换出错：'+e.message,5000);
   }
+}
+
+// 一键兑换全部：顺序兑换当前所有「未兑换 + 官方未判失效」的码，避免逐个点击
+async function redeemAll(){
+  const nickname=(document.getElementById('nickname').value||'').trim();
+  if(!nickname){
+    toast('请先在上方填写游戏昵称',4000);
+    document.getElementById('nickname').focus();
+    return;
+  }
+  localStorage.setItem(LS_NICK,nickname);
+  const redeemed=getRedeemed();
+  const list=(state.codes||[]).filter(c=>{
+    if(redeemed[c.code]) return false;                 // 本机已兑换
+    const off=c.official_status||'pending';
+    if(_DEAD_OFF[off]) return false;                   // 官方已判失效，跳过省接口调用
+    return true;
+  });
+  if(!list.length){
+    toast('没有可兑换的礼包码（都已兑换或列表为空）',4000);
+    return;
+  }
+  const btn=document.getElementById('redeemAllBtn');
+  btn.disabled=true;
+  let done=0, success=0, already=0, failed=0;
+  for(const c of list){
+    setBtn(c.code,'兑换中…',true);
+    btn.textContent=`兑换中… ${done}/${list.length}`;
+    try{
+      const {ok,data,st}=await callRedeem(nickname,c.code);
+      if(ok && (st==='success'||st==='already')){
+        markRedeemed(c.code);
+        if(st==='success') success++; else already++;
+        setBtn(c.code,'',true,true);                   // 标记为已兑换
+      }else if(ok && st==='bad_user'){
+        failed++;
+        setBtn(c.code,'兑换',false);
+        toast('❌ 游戏昵称错误，已停止批量兑换，请核对昵称后重试',6000);
+        break;
+      }else{
+        failed++;
+        setBtn(c.code,'兑换',false);
+      }
+    }catch(e){ failed++; setBtn(c.code,'兑换',false); }
+    done++;
+    btn.textContent=`兑换中… ${done}/${list.length}`;
+    await new Promise(r=>setTimeout(r,120));            // 轻量限速，温柔对待官方接口
+  }
+  btn.disabled=false;
+  btn.textContent='一键兑换全部';
+  loadCodes();                                         // 重新渲染，保证状态一致
+  toast(`一键兑换完成 ✅${success} 已兑换${already} 失败/无效${failed}`,5000);
 }
 
 // 昵称输入框回车聚焦 / 实时保存
