@@ -104,13 +104,6 @@
                    display:flex;align-items:center;justify-content:center;padding:0;transition:background .15s}
   .code-card .copy:active{background:rgba(154,94,44,.2)}
   .code-card .copy svg{width:16px;height:16px;fill:var(--accent)}
-  .code-card .actions{display:flex;gap:8px;margin-top:2px}
-  .redeem-btn{flex:1;padding:11px 14px;border:0;border-radius:12px;cursor:pointer;
-             background:linear-gradient(135deg,#a86a30,#c9873f);color:#fff;font-size:14px;font-weight:700;
-             box-shadow:0 4px 12px rgba(154,94,44,.28);transition:transform .12s,opacity .2s}
-  .redeem-btn:active{transform:scale(.97)}
-  .redeem-btn:disabled{opacity:.6;cursor:default}
-  .redeem-btn.done{background:#e8f6ed;color:var(--ok);box-shadow:none;border:1px solid #bfe6cd}
   .redeem-all-btn{width:100%;margin-top:12px;padding:13px;border:0;border-radius:12px;cursor:pointer;
              background:linear-gradient(135deg,#7a4a22,#9a5e2c);color:#fff;font-size:15px;font-weight:800;
              letter-spacing:.5px;box-shadow:0 4px 14px rgba(122,74,34,.3);transition:transform .12s,opacity .2s}
@@ -135,7 +128,7 @@
   <div class="hero">
     <span class="badge">BD2 · 礼包码兑换</span>
     <h1>🎁 礼包码兑换</h1>
-    <p>填写游戏昵称后，点下方「一键兑换全部」可一次性领取所有礼包码；也可单独点击每张卡的「兑换」。</p>
+    <p>填写游戏昵称后，点下方「一键兑换全部」即可一次性领取所有礼包码；每张卡上的标签会标明 已兑换 / 待兑换 / 已失效。</p>
   </div>
 
   <div class="nickbar">
@@ -264,10 +257,11 @@ function renderCodes(list){
     const upd=c.published_at?`${fmtMD(c.published_at)}上线`:'';
     const off=c.official_status||'pending';
     const DEAD={expired:'已过期',invalid:'已失效',exceeded:'已达上限',unavailable:'暂不可用'};
-    let statusCls,statusText,exp;
-    if(DEAD[off]){statusCls='dead';statusText=DEAD[off];exp='';}
-    else{statusCls='active';statusText='待兑换';exp=daysLeft(c.expires_at);}
     const isDone=!!redeemed[c.code];
+    let statusCls,statusText,exp;
+    if(isDone){statusCls='active';statusText='已兑换 ✓';exp='';}
+    else if(DEAD[off]){statusCls='dead';statusText=DEAD[off];exp='';}
+    else{statusCls='active';statusText='待兑换';exp=daysLeft(c.expires_at);}
     const hasReward=!!(c.reward_name||c.description);
     const rawQty=c.reward_qty||'';
     const qty=rawQty?(rawQty.toLowerCase().startsWith('x')?rawQty:'x'+rawQty):'';
@@ -282,9 +276,6 @@ function renderCodes(list){
           ${qty?`<div class="reward-qty">${qty}</div>`:''}
         </div>
       </div>`:'';
-    const btn=isDone
-      ? `<button class="redeem-btn done" disabled>已兑换 ✓</button>`
-      : `<button class="redeem-btn" data-code="${esc(c.code)}" onclick="redeem(this.dataset.code)">兑换</button>`;
     return `<div class="code-card${DEAD[off]?' dead':''}">
       <div class="meta-top">
         <div class="dates">${upd?`<span class="upd">${upd}</span>`:''}<span class="exp">${exp}</span></div>
@@ -295,7 +286,6 @@ function renderCodes(list){
         <span class="code-str">${esc(c.code)}</span>
         <button class="copy" data-code="${esc(c.code)}" onclick="copyCode(this.dataset.code)" aria-label="复制">${COPY_SVG}</button>
       </div>
-      <div class="actions">${btn}</div>
     </div>`;
   }).join('');
 }
@@ -326,53 +316,6 @@ async function callRedeem(nickname, code){
   return {ok,status,data,st:(data&&data.status)};
 }
 
-// 更新某张码卡片上的兑换按钮视觉
-function setBtn(code, text, disabled, done){
-  const btn=document.querySelector(`.redeem-btn[data-code="${cssEscape(code)}"]`);
-  if(!btn) return;
-  if(done){btn.classList.add('done');btn.textContent='已兑换 ✓';btn.disabled=true;}
-  else {btn.textContent=text;btn.disabled=disabled;}
-}
-
-// 单码兑换（卡片上的「兑换」按钮）
-async function redeem(code){
-  const nickname=(document.getElementById('nickname').value||'').trim();
-  if(!nickname){
-    toast('请先在上方填写游戏昵称',4000);
-    document.getElementById('nickname').focus();
-    return;
-  }
-  localStorage.setItem(LS_NICK,nickname);
-  const btn=document.querySelector(`.redeem-btn[data-code="${cssEscape(code)}"]`);
-  if(btn){btn.disabled=true;btn.textContent='兑换中…';}
-  try{
-    const {ok,data,st}=await callRedeem(nickname,code);
-    if(!ok){
-      if(btn){btn.disabled=false;btn.textContent='兑换';}
-      toast('兑换失败：'+(data.detail||JSON.stringify(data)),5000);
-      return;
-    }
-    if(st==='success'){
-      markRedeemed(code);
-      toast('✅ 兑换成功！奖励已发送至游戏邮箱',4000);
-      loadCodes();
-    }else if(st==='already'){
-      markRedeemed(code);
-      toast('ℹ️ 该昵称已兑换过此礼包码',4000);
-      loadCodes();
-    }else if(st==='bad_user'){
-      if(btn){btn.disabled=false;btn.textContent='兑换';}
-      toast('❌ 游戏昵称错误，请核对后重试',6000);
-    }else{
-      if(btn){btn.disabled=false;btn.textContent='兑换';}
-      toast('❌ 兑换失败：'+(data.message||st),6000);
-    }
-  }catch(e){
-    if(btn){btn.disabled=false;btn.textContent='兑换';}
-    toast('兑换出错：'+e.message,5000);
-  }
-}
-
 // 一键兑换全部：顺序兑换当前所有「未兑换 + 官方未判失效」的码，避免逐个点击
 async function redeemAll(){
   const nickname=(document.getElementById('nickname').value||'').trim();
@@ -397,24 +340,20 @@ async function redeemAll(){
   btn.disabled=true;
   let done=0, success=0, already=0, failed=0;
   for(const c of list){
-    setBtn(c.code,'兑换中…',true);
     btn.textContent=`兑换中… ${done}/${list.length}`;
     try{
       const {ok,data,st}=await callRedeem(nickname,c.code);
       if(ok && (st==='success'||st==='already')){
         markRedeemed(c.code);
         if(st==='success') success++; else already++;
-        setBtn(c.code,'',true,true);                   // 标记为已兑换
       }else if(ok && st==='bad_user'){
         failed++;
-        setBtn(c.code,'兑换',false);
         toast('❌ 游戏昵称错误，已停止批量兑换，请核对昵称后重试',6000);
         break;
       }else{
         failed++;
-        setBtn(c.code,'兑换',false);
       }
-    }catch(e){ failed++; setBtn(c.code,'兑换',false); }
+    }catch(e){ failed++; }
     done++;
     btn.textContent=`兑换中… ${done}/${list.length}`;
     await new Promise(r=>setTimeout(r,120));            // 轻量限速，温柔对待官方接口
