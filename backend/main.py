@@ -205,6 +205,20 @@ def redeem(req: RedeemReq):
     }
 
 
+class NickReq(BaseModel):
+    nickname: str = Field("", max_length=24)
+
+
+@app.post("/api/verify-nickname")
+def verify_nickname(req: NickReq):
+    """验证游戏昵称是否存在（用官方探测，不消耗真实礼包码）。"""
+    nickname = (req.nickname or "").strip()
+    if not nickname:
+        return {"ok": True, "exists": False, "message": "请填写游戏昵称"}
+    exists, message = redeemer.verify_nickname(nickname)
+    return {"ok": True, "exists": exists, "message": message}
+
+
 # ---------------- 管理端 ----------------
 @app.post("/admin/codes", dependencies=[Depends(require_admin)])
 def admin_add_code(req: CodeReq):

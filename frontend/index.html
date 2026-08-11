@@ -128,13 +128,13 @@
   <div class="hero">
     <span class="badge">BD2 · 礼包码兑换</span>
     <h1>🎁 礼包码兑换</h1>
-    <p>填写游戏昵称后，点下方「一键兑换全部」即可一次性领取所有礼包码；每张卡上的标签会标明 已兑换 / 待兑换 / 已失效。</p>
+    <p>填好昵称，点「一键兑换全部」即可领取全部礼包码；卡片标签显示 已兑换 / 待兑换 / 已失效。</p>
   </div>
 
   <div class="nickbar">
     <label for="nickname">你的游戏昵称</label>
     <input id="nickname" maxlength="24" placeholder="请输入游戏昵称（即官方兑换身份）" autocomplete="off" />
-    <div class="hint">昵称仅保存在本机浏览器，用于一键兑换；已兑换的礼包码也会在本机记录。</div>
+    <div class="hint">昵称与已兑换记录仅存本机浏览器，不会上传服务器。</div>
     <button id="redeemAllBtn" class="redeem-all-btn" onclick="redeemAll()">一键兑换全部</button>
   </div>
 
@@ -156,10 +156,10 @@
 <div class="toast" id="toast"></div>
 
 <script>
-// 防御 XSS：所有插入 innerHTML 的外部/用户派生内容都必须先过 esc()
+// 防 XSS：外部/用户内容先过 esc()
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
-// 昵称持久化到本地；已兑换的码也记在本地（key=码）
+// 昵称与已兑换记录存本地
 const LS_NICK='bd2_nick';
 const LS_REDEEMED='bd2_redeemed';
 const state={codes:[]};  // 当前展示的礼包码列表，供「一键兑换全部」遍历
@@ -172,7 +172,7 @@ function toast(msg, ms){
   clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'), ms||2200);
 }
 
-// 健壮请求：先读文本再解析，带超时，出错暴露真实 HTTP 状态码 + 原始片段
+// 带超时与容错的请求
 async function requestJson(url, method, body){
   const ctrl=new AbortController();
   const timer=setTimeout(()=>ctrl.abort(),20000);
@@ -310,32 +310,43 @@ async function loadCodes(){
   }
 }
 
-// 底层兑换请求：只发请求、返回原始结果，由调用方解释
+// 单个兑换请求
 async function callRedeem(nickname, code){
-  const {status,ok,data}=await requestJson('/api/redeem','POST',{nickname,code});
-  return {ok,status,data,st:(data&&data.status)};
+  const {ok,data}=await requestJson('/api/redeem','POST',{nickname,code});
+  return {ok,data,st:(data&&data.status)};
 }
 
-// 一键兑换全部：顺序兑换当前所有「未兑换 + 官方未判失效」的码，避免逐个点击
+// 一键兑换全部：先验证昵称，再顺序兑换本机未兑换、官方未失效的码
 async function redeemAll(){
   const nickname=(document.getElementById('nickname').value||'').trim();
   if(!nickname){
-    toast('请先在上方填写游戏昵称',4000);
+    toast('请填写游戏昵称',4000);
     document.getElementById('nickname').focus();
     return;
   }
   localStorage.setItem(LS_NICK,nickname);
+
+  // 先验证昵称（官方探测，不消耗真实码）；昵称错直接拦下
+  try{
+    const {data}=await requestJson('/api/verify-nickname','POST',{nickname});
+    if(data && data.exists===false){
+      toast('❌ 昵称错误，请核对后重试',6000);
+      return;
+    }
+  }catch(e){ /* 探测失败则放行，不让玩家卡住 */ }
+
   const redeemed=getRedeemed();
   const list=(state.codes||[]).filter(c=>{
     if(redeemed[c.code]) return false;                 // 本机已兑换
     const off=c.official_status||'pending';
-    if(_DEAD_OFF[off]) return false;                   // 官方已判失效，跳过省接口调用
+    if(_DEAD_OFF[off]) return false;                   // 官方已判失效
     return true;
   });
   if(!list.length){
-    toast('没有可兑换的礼包码（都已兑换或列表为空）',4000);
+    toast('暂无可兑换的礼包码（都已兑换或列表为空）',4000);
     return;
   }
+
   const btn=document.getElementById('redeemAllBtn');
   btn.disabled=true;
   let done=0, success=0, already=0, failed=0;
@@ -343,12 +354,12 @@ async function redeemAll(){
     btn.textContent=`兑换中… ${done}/${list.length}`;
     try{
       const {ok,data,st}=await callRedeem(nickname,c.code);
-      if(ok && (st==='success'||st==='already')){
+      if(st==='success'||st==='already'){
         markRedeemed(c.code);
         if(st==='success') success++; else already++;
-      }else if(ok && st==='bad_user'){
+      }else if(st==='bad_user'){
         failed++;
-        toast('❌ 游戏昵称错误，已停止批量兑换，请核对昵称后重试',6000);
+        toast('❌ 昵称错误，请核对后重试',6000);
         break;
       }else{
         failed++;
@@ -356,12 +367,12 @@ async function redeemAll(){
     }catch(e){ failed++; }
     done++;
     btn.textContent=`兑换中… ${done}/${list.length}`;
-    await new Promise(r=>setTimeout(r,120));            // 轻量限速，温柔对待官方接口
+    await new Promise(r=>setTimeout(r,120));
   }
   btn.disabled=false;
   btn.textContent='一键兑换全部';
-  loadCodes();                                         // 重新渲染，保证状态一致
-  toast(`一键兑换完成 ✅${success} 已兑换${already} 失败/无效${failed}`,5000);
+  loadCodes();
+  toast(`兑换完成：成功 ${success} / 已兑换 ${already} / 失败 ${failed}`,5000);
 }
 
 // 昵称输入框回车聚焦 / 实时保存
