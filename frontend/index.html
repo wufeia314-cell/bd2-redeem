@@ -250,7 +250,14 @@ function renderCodes(list){
   const box=document.getElementById('codes');
   const redeemed=getRedeemed();
   if(!list.length){box.innerHTML='<span class="empty">暂无生效的礼包码</span>';return;}
-  const ordered=list.slice().sort((a,b)=>(_isBottomCode(a)?1:0)-(_isBottomCode(b)?1:0));
+  const ordered=list.slice().sort((a,b)=>{
+    const ba=_isBottomCode(a)?1:0, bb=_isBottomCode(b)?1:0;
+    if(ba!==bb) return ba-bb;                                   // 不可信源钉底部
+    const ta=Date.parse((a.published_at||'')+'T00:00:00')||0;
+    const tb=Date.parse((b.published_at||'')+'T00:00:00')||0;
+    if(ta!==tb) return tb-ta;                                   // 上线时间：新→旧（最新在上）
+    return (b.id||0)-(a.id||0);                                 // 退化：id 大在上
+  });
   box.innerHTML=ordered.map(c=>{
     const upd=c.published_at?`${fmtMD(c.published_at)}上线`:'';
     const off=c.official_status||'pending';
